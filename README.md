@@ -1,2 +1,15 @@
 # Omnira
-Omnira is a local-first AI workspace that unifies chat, GGUF models, ONNX, image/video/audio generation, voice assistants, RAG, agents, and multimodal workflows into one seamless desktop app — powered by open-source AI runtimes with no vendor lock-in, cloud dependency, or fragmented tools.
+
+Omnira is a local-first open source AI workstation architecture focused on modular inference providers and extensible orchestration.
+
+## Repository layout
+
+- `src/omnira`: Python backend architecture (core, providers, config, API, logging)
+- `apps/desktop`: future Tauri + React + TypeScript desktop frontend shell
+- `tests/unit`: initial unit tests for core architecture
+- `docs`: architecture, roadmap, and environment setup documentation
+
+Start with:
+- `docs/environment-setup.md`
+- `docs/architecture.md`
+- `CONTRIBUTING.md`
