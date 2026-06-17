@@ -102,7 +102,7 @@ class LlamaCppProvider(BaseProvider):
                 top_p=top_p,
                 stop=stop_sequences,
             )
-        except Exception as exc:  # pragma: no cover - defensive wrapper
+        except (RuntimeError, ValueError, TypeError, OSError) as exc:
             msg = f"Text generation failed for model '{request.model_id}'."
             raise LlamaCppProviderError(msg) from exc
 
@@ -124,7 +124,7 @@ class LlamaCppProvider(BaseProvider):
     def _load_llama_class(self) -> Any:
         try:
             module = import_module("llama_cpp")
-        except Exception as exc:
+        except ImportError as exc:
             msg = "llama_cpp dependency is unavailable. Install llama-cpp-python."
             raise LlamaCppProviderError(msg) from exc
 
@@ -163,7 +163,7 @@ class LlamaCppProvider(BaseProvider):
                 seed=self._config.seed,
                 verbose=self._config.verbose,
             )
-        except Exception as exc:
+        except (RuntimeError, ValueError, TypeError, OSError) as exc:
             msg = f"Failed to load GGUF model '{model_id}' from {model_path}"
             raise LlamaCppProviderError(msg) from exc
 
