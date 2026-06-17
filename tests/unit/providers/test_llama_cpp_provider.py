@@ -149,13 +149,12 @@ class LlamaCppProviderTest(unittest.TestCase):
             config=LlamaCppProviderConfig(models={"invalid": str(self.not_gguf)}),
         )
 
-        with patch(
-            "omnira.providers.llama_cpp_provider.import_module",
-            return_value=SimpleNamespace(Llama=mock_llama_cls),
-        ):
-            provider.initialize()
-            with self.assertRaises(LlamaCppProviderError):
-                provider.infer(InferenceRequest(model_id="invalid", payload={"prompt": "hello"}))
+        with self.assertRaises(LlamaCppProviderError):
+            with patch(
+                "omnira.providers.llama_cpp_provider.import_module",
+                return_value=SimpleNamespace(Llama=mock_llama_cls),
+            ):
+                provider.initialize()
 
 
 if __name__ == "__main__":
