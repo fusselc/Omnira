@@ -92,8 +92,7 @@ class LlamaCppProvider(BaseProvider):
         max_tokens = int(request.payload.get("max_tokens", self._config.generation.max_tokens))
         temperature = float(request.payload.get("temperature", self._config.generation.temperature))
         top_p = float(request.payload.get("top_p", self._config.generation.top_p))
-        stop = request.payload.get("stop", self._config.generation.stop)
-        stop_sequences = stop if stop else None
+        stop_sequences = request.payload.get("stop", self._config.generation.stop)
 
         try:
             result = self._model.create_completion(

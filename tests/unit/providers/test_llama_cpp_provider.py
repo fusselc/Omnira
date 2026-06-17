@@ -15,7 +15,7 @@ from omnira.providers import (
 )
 
 
-class LlamaCppProviderTest(unittest.TestCase):
+class TestLlamaCppProvider(unittest.TestCase):
     def setUp(self) -> None:
         self._tempdir = tempfile.TemporaryDirectory()
         self.addCleanup(self._tempdir.cleanup)
