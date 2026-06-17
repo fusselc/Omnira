@@ -102,7 +102,7 @@ class LlamaCppProvider(BaseProvider):
                 top_p=top_p,
                 stop=stop_sequences,
             )
-        except (RuntimeError, ValueError, TypeError, OSError) as exc:
+        except (RuntimeError, ValueError, OSError) as exc:
             msg = f"Text generation failed for model '{request.model_id}'."
             raise LlamaCppProviderError(msg) from exc
 
@@ -163,7 +163,7 @@ class LlamaCppProvider(BaseProvider):
                 seed=self._config.seed,
                 verbose=self._config.verbose,
             )
-        except (RuntimeError, ValueError, TypeError, OSError) as exc:
+        except (RuntimeError, ValueError, OSError) as exc:
             msg = f"Failed to load GGUF model '{model_id}' from {model_path}"
             raise LlamaCppProviderError(msg) from exc
 

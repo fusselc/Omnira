@@ -156,6 +156,20 @@ class TestLlamaCppProvider(unittest.TestCase):
             ):
                 provider.initialize()
 
+    def test_wraps_corrupted_model_load_errors(self) -> None:
+        mock_llama_cls = Mock(side_effect=ValueError("invalid gguf format"))
+        provider = LlamaCppProvider(
+            metadata=self.metadata,
+            config=LlamaCppProviderConfig(models={"tiny": str(self.model_a)}, default_model_id="tiny"),
+        )
+
+        with self.assertRaises(LlamaCppProviderError):
+            with patch(
+                "omnira.providers.llama_cpp_provider.import_module",
+                return_value=SimpleNamespace(Llama=mock_llama_cls),
+            ):
+                provider.initialize()
+
 
 if __name__ == "__main__":
     unittest.main()
