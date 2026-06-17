@@ -10,6 +10,6 @@ Omnira is a local-first open source AI workstation architecture focused on modul
 - `docs`: architecture, roadmap, and environment setup documentation
 
 Start with:
-- `/home/runner/work/Omnira/Omnira/docs/environment-setup.md`
-- `/home/runner/work/Omnira/Omnira/docs/architecture.md`
-- `/home/runner/work/Omnira/Omnira/CONTRIBUTING.md`
+- `docs/environment-setup.md`
+- `docs/architecture.md`
+- `CONTRIBUTING.md`
