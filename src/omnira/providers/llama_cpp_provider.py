@@ -85,13 +85,20 @@ class LlamaCppProvider(BaseProvider):
             self._load_model(request.model_id)
 
         prompt = request.payload.get("prompt")
-        if not isinstance(prompt, str) or not prompt.strip():
+        if not isinstance(prompt, str):
+            msg = "Inference request payload must include a prompt string."
+            raise LlamaCppProviderError(msg)
+        if not prompt.strip():
             msg = "Inference request payload must include a non-empty prompt."
             raise LlamaCppProviderError(msg)
 
-        max_tokens = int(request.payload.get("max_tokens", self._config.generation.max_tokens))
-        temperature = float(request.payload.get("temperature", self._config.generation.temperature))
-        top_p = float(request.payload.get("top_p", self._config.generation.top_p))
+        try:
+            max_tokens = int(request.payload.get("max_tokens", self._config.generation.max_tokens))
+            temperature = float(request.payload.get("temperature", self._config.generation.temperature))
+            top_p = float(request.payload.get("top_p", self._config.generation.top_p))
+        except (TypeError, ValueError) as exc:
+            msg = "Generation parameters max_tokens, temperature, and top_p must be numeric."
+            raise LlamaCppProviderError(msg) from exc
         stop_sequences = request.payload.get("stop", self._config.generation.stop)
 
         try:

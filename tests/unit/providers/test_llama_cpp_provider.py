@@ -142,6 +142,26 @@ class TestLlamaCppProvider(unittest.TestCase):
             with self.assertRaises(LlamaCppProviderError):
                 provider.infer(InferenceRequest(model_id="tiny", payload={}))
 
+    def test_infer_validates_numeric_generation_parameters(self) -> None:
+        mock_llama_cls = Mock(return_value=Mock())
+        provider = LlamaCppProvider(
+            metadata=self.metadata,
+            config=LlamaCppProviderConfig(models={"tiny": str(self.model_a)}, default_model_id="tiny"),
+        )
+
+        with patch(
+            "omnira.providers.llama_cpp_provider.import_module",
+            return_value=SimpleNamespace(Llama=mock_llama_cls),
+        ):
+            provider.initialize()
+            with self.assertRaises(LlamaCppProviderError):
+                provider.infer(
+                    InferenceRequest(
+                        model_id="tiny",
+                        payload={"prompt": "hello", "max_tokens": "bad-value"},
+                    )
+                )
+
     def test_rejects_non_gguf_model_paths(self) -> None:
         mock_llama_cls = Mock(return_value=Mock())
         provider = LlamaCppProvider(
