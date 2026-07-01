@@ -11,6 +11,7 @@ target/
 # They are fetched by scripts/packaging/fetch-llama-server.ps1 with pinned
 # versions and SHA-256 verification (fails closed on mismatch).
 apps/desktop/src-tauri/binaries/
+scripts/packaging/.cache/
 *.exe
 *.dll
 
