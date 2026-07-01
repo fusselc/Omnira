@@ -1,0 +1,76 @@
+THIRD PARTY LICENSES
+====================
+
+Omnira is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Omnira bundles or redistributes third-party software. This file preserves the
+original license texts and copyright notices for all bundled components. It
+must be included in every packaged installer and must remain accessible from
+a future About/Legal screen in the application.
+
+This file is updated whenever the pinned runtime version changes or a new
+third-party component is bundled.
+
+--------------------------------------------------------------------------
+1. llama.cpp (llama-server)
+--------------------------------------------------------------------------
+
+Omnira bundles prebuilt `llama-server` binaries from the llama.cpp project.
+
+  Project:      llama.cpp
+  Homepage:     https://github.com/ggml-org/llama.cpp
+  License:      MIT
+  Pinned tag:   b9859
+  Pinned commit: 4fc4ec5541b243957ae5099edb67372f8f3b550e
+
+Bundled variants (official upstream release artifacts, verified by SHA-256
+at packaging time; packaging fails closed on checksum mismatch):
+
+  - llama-b9859-bin-win-vulkan-x64.zip
+    sha256: 5e7794aa22ba34c8e223934b0b3e14cd441612f26e9f06a4a0e5f47b9e7f577b
+
+  - llama-b9859-bin-win-cpu-x64.zip
+    sha256: c9aa80f233a7d1749341860f11723b912d4cfd6eec19434c3d00bba0abc9f85c
+
+Original license text and copyright notice, preserved verbatim:
+
+  MIT License
+
+  Copyright (c) 2023-2026 The ggml authors
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+--------------------------------------------------------------------------
+2. Rust crate dependencies
+--------------------------------------------------------------------------
+
+The Omnira desktop application is built with Rust and depends on third-party
+crates (Tauri, tokio, rusqlite, serde, and others). Crate license metadata is
+aggregated automatically with `cargo-license` (or an equivalent tool) as part
+of the packaging pipeline, and the aggregated report is appended to the
+installer copy of this file at build time. Crate licenses are not
+hand-maintained here; see scripts/packaging/ for the aggregation step.
+
+--------------------------------------------------------------------------
+3. JavaScript dependencies
+--------------------------------------------------------------------------
+
+The frontend depends on npm packages (React, Tailwind CSS, Vite, and others)
+whose license metadata is aggregated automatically at build time using
+standard npm license tooling and appended to the installer copy of this file.

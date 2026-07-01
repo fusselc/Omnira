@@ -1,0 +1,48 @@
+# Dependencies and build output
+node_modules
+dist
+dist-ssr
+*.local
+
+# Rust build output
+target/
+
+# Runtime binaries -- NEVER commit llama-server or other runtime binaries.
+# They are fetched by scripts/packaging/fetch-llama-server.ps1 with pinned
+# versions and SHA-256 verification (fails closed on mismatch).
+apps/desktop/src-tauri/binaries/
+*.exe
+*.dll
+
+# Model files -- NEVER commit GGUF or other model weights.
+*.gguf
+*.onnx
+*.safetensors
+models/*
+!models/README.md
+!models/.gitkeep
+
+# Runtime/user data -- NEVER commit conversations, databases, or logs.
+data/*
+!data/README.md
+!data/.gitkeep
+*.db
+*.sqlite
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
