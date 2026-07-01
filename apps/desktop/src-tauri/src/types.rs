@@ -118,7 +118,6 @@ pub struct ChatEndpoint {
 #[serde(default)]
 pub struct Settings {
     pub theme: String,
-    pub model_search_paths: Vec<String>,
     /// Optional custom runtime path override (Settings screen).
     pub runtime_path_override: Option<String>,
     /// Recorded working runtime variant from a previous run.
@@ -131,7 +130,6 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme: "dark".to_string(),
-            model_search_paths: Vec::new(),
             runtime_path_override: None,
             preferred_runtime_variant: None,
             onboarding_complete: false,

@@ -117,7 +117,6 @@ export interface ChatEndpoint {
 
 export interface Settings {
   theme: string;
-  model_search_paths: string[];
   runtime_path_override: string | null;
   preferred_runtime_variant: RuntimeVariant | null;
   onboarding_complete: boolean;

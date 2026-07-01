@@ -19,7 +19,6 @@ export const isMockMode =
 
 let settings: Settings = {
   theme: "dark",
-  model_search_paths: [],
   runtime_path_override: null,
   preferred_runtime_variant: null,
   onboarding_complete: false,

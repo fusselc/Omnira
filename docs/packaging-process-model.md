@@ -59,7 +59,8 @@ Dev mode uses the same script, or a user-supplied runtime path via Settings.
 
 ## 4. Installer
 
-- Tauri bundler producing an NSIS installer (MSI optional later).
+- Tauri bundler producing an **NSIS installer** for MVP alpha.
+  **MSI is deferred** until after alpha; NSIS is sufficient for early releases.
 - The installer includes: the Omnira executable, both llama-server variants and
   their DLLs, `THIRD_PARTY_LICENSES`, and LICENSE.
 - No network access is required at install time or first run.
@@ -79,11 +80,8 @@ main executable: certificate type (EV vs. standard OV), cost, and CI signing
 workflow. Unsigned installers trigger SmartScreen warnings; this is a go/no-go
 checklist item for alpha, not a nice-to-have.
 
-## 7. Why there is no Python
+## 7. Orchestrator implementation
 
-An earlier design packaged a Python/FastAPI orchestrator with PyInstaller as a
-Tauri sidecar. It was removed before implementation: the MVP backend logic
-(process supervision, SQLite, config, streaming) fits the Rust core directly,
-and PyInstaller artifacts carried the project's highest antivirus
-false-positive and packaging-complexity risk. This decision is recorded in
-`docs/architecture.md`.
+The MVP orchestrator is the **Rust core inside Tauri**, not a separate service.
+See [ADR 0001](adr/0001-rust-tauri-core-orchestrator.md) for why an earlier
+Python/FastAPI + PyInstaller sidecar was not implemented.

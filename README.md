@@ -53,7 +53,9 @@ for llama.cpp, Ollama, LM Studio, ComfyUI, or similar tools.
   your multi-gigabyte model files, and removing a model from Omnira never deletes
   the file.
 
-See [docs/architecture.md](docs/architecture.md) for the full design.
+See [docs/architecture.md](docs/architecture.md) for the full design and
+[ADR 0001](docs/adr/0001-rust-tauri-core-orchestrator.md) for the orchestrator
+decision. Alpha release verification: [alpha-readiness-checklist.md](docs/alpha-readiness-checklist.md).
 
 ## Long-term vision (not current features)
 
@@ -71,6 +73,8 @@ runtime strategy live in [docs/roadmap.md](docs/roadmap.md) and
 
 - [Vision](docs/vision.md) -- what Omnira is, who it is for, and what it is not
 - [Architecture](docs/architecture.md) -- desktop shell, Rust core, managed runtime
+- [ADR 0001](docs/adr/0001-rust-tauri-core-orchestrator.md) -- Rust core vs Python sidecar
+- [Alpha readiness checklist](docs/alpha-readiness-checklist.md) -- pre-release verification
 - [Roadmap](docs/roadmap.md) -- MVP phases and post-MVP capabilities
 - [ChatProvider](docs/chat-provider.md) -- the MVP provider contract
 - [Packaging and process model](docs/packaging-process-model.md)

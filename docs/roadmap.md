@@ -49,12 +49,13 @@ MVP first, everything else after. Each phase completes before the next begins.
 
 ### Phase 5 -- MVP hardening and packaging
 
-- Tauri bundling (single Rust binary, no sidecar pipeline), NSIS/MSI installer.
+- Tauri bundling (single Rust binary, no sidecar pipeline), **NSIS installer**
+  (MSI deferred post-alpha).
 - Fresh-install, first-launch, model-selection, chat, shutdown, relaunch, and
   uninstall testing.
 - Offline verification: no external network calls by default; full workflow
   works with networking disconnected (acceptance criterion 13).
-- CSP/devtools production audit.
+- CSP/devtools production audit ([alpha-readiness-checklist.md](alpha-readiness-checklist.md)).
 - Evaluate Windows code signing (cost, EV vs. OV certificate, CI signing
   workflow) before public alpha -- a go/no-go checklist item.
 

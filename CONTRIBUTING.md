@@ -27,8 +27,8 @@ Contributions are evaluated against these principles, in this order:
   or any runtime data. Binaries are fetched by the packaging script with pinned
   versions and SHA-256 verification.
 - The Rust core owns process supervision, SQLite, config, and IPC. Do not add a
-  separate backend process or a Python runtime; that architecture was evaluated
-  and deliberately removed (see `docs/architecture.md`).
+  separate backend process or a Python runtime; see
+  [ADR 0001](docs/adr/0001-rust-tauri-core-orchestrator.md).
 - All user-facing errors must map to the error taxonomy in `docs/chat-provider.md`.
   Do not invent ad hoc error strings.
 - Documentation and UI copy use plain language and ASCII-safe punctuation.

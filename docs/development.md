@@ -11,7 +11,8 @@ are self-contained.
 - Tauri 2 Windows prerequisites: Microsoft Visual Studio C++ Build Tools and
   the WebView2 runtime (preinstalled on current Windows)
 
-No Python is required, anywhere.
+The Rust/Tauri core is the orchestrator. No Python runtime is used or required.
+See [ADR 0001](adr/0001-rust-tauri-core-orchestrator.md) for historical context.
 
 ## Repository layout
 
@@ -22,10 +23,11 @@ omnira/
     src-tauri/           Rust core (supervision, storage, config, IPC)
       binaries/          fetched llama-server runtimes (gitignored)
   docs/                  canonical architecture and product docs
+    adr/                 architecture decision records
   scripts/
-    packaging/           runtime fetch + packaging scripts
+    packaging/           runtime fetch, license aggregation
+    diagnostics/         release verification helpers
     dev/                 developer utilities
-  tests/                 integration / e2e tests
   models/                placeholder only -- never commit model files
   data/                  placeholder only -- never commit runtime data
 ```
@@ -44,11 +46,17 @@ powershell -ExecutionPolicy Bypass -File ../../scripts/packaging/fetch-llama-ser
 
 ```powershell
 cd apps/desktop
-npm run tauri dev
+npm run tauri:dev
 ```
 
 This starts Vite for the frontend and builds/runs the Rust core with hot
-reload for UI changes.
+reload for UI changes. The `tauri:dev` script merges `src-tauri/tauri.dev.conf.json`,
+which widens CSP `connect-src` to include `http://localhost:*` and
+`ws://localhost:*` for the Vite dev server and HMR. **Production builds do not
+use this merge** -- see [local-security-boundary.md](local-security-boundary.md).
+
+For UI-only work without a runtime, `npm run dev` runs the frontend in a
+browser with the in-memory mock backend (`src/lib/mock.ts`).
 
 ## Build a release bundle
 
@@ -59,6 +67,18 @@ npm run tauri build
 
 Produces the NSIS installer under `apps/desktop/src-tauri/target/release/bundle/`.
 Packaging requires the fetched runtimes to be present and checksum-valid.
+
+Before alpha, walk through [alpha-readiness-checklist.md](alpha-readiness-checklist.md).
+
+## Packaging helpers
+
+```powershell
+# Dependency license appendix (optional, for release artifacts)
+powershell -ExecutionPolicy Bypass -File scripts/packaging/aggregate-licenses.ps1
+
+# Offline-after-install smoke test (manual UI steps; post-install)
+powershell -ExecutionPolicy Bypass -File scripts/diagnostics/offline-smoke-test.ps1
+```
 
 ## Useful checks
 
@@ -72,6 +92,9 @@ cargo clippy
 # Frontend
 cd apps/desktop
 npx tsc --noEmit
+
+# Orphan llama-server check (requires fetched runtimes + optional test GGUF)
+powershell -ExecutionPolicy Bypass -File ../../scripts/dev/orphan-check.ps1
 ```
 
 ## Rules that apply to every change

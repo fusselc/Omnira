@@ -11,14 +11,10 @@ process owns process supervision, SQLite persistence, configuration, logging,
 and typed IPC. The Rust core spawns and supervises a bundled `llama-server`
 (llama.cpp) child process for GGUF chat inference.
 
-There is **no separate backend process and no Python runtime**. An earlier
-design used a packaged Python/FastAPI orchestrator as a Tauri sidecar; it was
-removed before implementation because everything the MVP backend does -- spawn
-and supervise `llama-server`, stream tokens, read/write SQLite, manage a config
-file -- is a natural fit for the Rust side, and the Python packaging pipeline
-(PyInstaller) was the largest antivirus/SmartScreen and complexity risk in the
-design. If a future provider genuinely needs Python's ML ecosystem, that is a
-deliberate, feature-scoped decision to make later.
+There is **no separate backend process and no Python runtime**. The Rust core
+inside the Tauri process is the sole orchestrator. Historical context for an
+earlier Python/FastAPI sidecar design is recorded in
+[ADR 0001](adr/0001-rust-tauri-core-orchestrator.md).
 
 ```mermaid
 flowchart TD
@@ -41,9 +37,11 @@ flowchart TD
 - React + TypeScript + Tailwind CSS single-page app inside the Tauri webview
   (WebView2 on Windows).
 - MVP screens: Chat, Models, Settings, Advanced Diagnostics.
-- The webview is hardened per `docs/local-security-boundary.md`: strict CSP,
-  no remote content, no arbitrary navigation, sanitized markdown rendering with
-  raw HTML disabled, devtools disabled in production.
+- The webview is hardened per `docs/local-security-boundary.md`: strict CSP
+  (production uses `127.0.0.1` loopback only for chat; dev merges
+  `tauri.dev.conf.json` for Vite/HMR), no remote content, no arbitrary
+  navigation, sanitized markdown rendering with raw HTML disabled, devtools
+  disabled in production release builds.
 
 ### Rust core (inside the Tauri process)
 

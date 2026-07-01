@@ -12,6 +12,7 @@ target/
 # versions and SHA-256 verification (fails closed on mismatch).
 apps/desktop/src-tauri/binaries/
 scripts/packaging/.cache/
+THIRD_PARTY_LICENSES.dependencies
 *.exe
 *.dll
 

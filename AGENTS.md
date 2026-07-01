@@ -7,7 +7,7 @@ This file is the canonical repository-wide instruction source for coding agents 
 - MVP scope is Windows-first local GGUF chat only.
 - The runtime stack is Tauri 2, React, TypeScript, Tailwind CSS, and a Rust core.
 - The Rust core owns process supervision, SQLite persistence, config, and typed IPC.
-- Do not add a Python runtime, FastAPI orchestrator, PyInstaller pipeline, or `backend/` directory for MVP.
+- Do not add a Python runtime, FastAPI orchestrator, PyInstaller pipeline, or `backend/` directory for MVP. See `docs/adr/0001-rust-tauri-core-orchestrator.md`.
 - Do not add telemetry, accounts, cloud sync, model downloads, or default external network calls.
 
 ## Runtime And Data Rules

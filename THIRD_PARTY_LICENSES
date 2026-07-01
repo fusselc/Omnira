@@ -61,16 +61,23 @@ Original license text and copyright notice, preserved verbatim:
 --------------------------------------------------------------------------
 
 The Omnira desktop application is built with Rust and depends on third-party
-crates (Tauri, tokio, rusqlite, serde, and others). Crate license metadata is
-aggregated automatically with `cargo-license` (or an equivalent tool) as part
-of the packaging pipeline, and the aggregated report is appended to the
-installer copy of this file at build time. Crate licenses are not
-hand-maintained here; see scripts/packaging/ for the aggregation step.
+crates (Tauri, tokio, rusqlite, serde, and others).
+
+To generate an aggregated license report:
+
+  powershell -ExecutionPolicy Bypass -File scripts/packaging/aggregate-licenses.ps1
+
+This writes `THIRD_PARTY_LICENSES.dependencies` at the repo root. Re-run after
+dependency changes and include that file with release artifacts when publishing
+alpha builds. Requires `cargo install cargo-license` and npm `license-checker`
+(via npx).
+
+Until the appendix is generated, section 1 (llama.cpp) remains the hand-maintained
+bundled-runtime attribution required in every installer.
 
 --------------------------------------------------------------------------
 3. JavaScript dependencies
 --------------------------------------------------------------------------
 
-The frontend depends on npm packages (React, Tailwind CSS, Vite, and others)
-whose license metadata is aggregated automatically at build time using
-standard npm license tooling and appended to the installer copy of this file.
+Frontend npm packages (React, Tailwind CSS, Vite, and others) are included in
+the same `aggregate-licenses.ps1` output (`THIRD_PARTY_LICENSES.dependencies`).

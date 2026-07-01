@@ -59,19 +59,25 @@ the approved CORS fallback (see `docs/architecture.md`).
 
 ## 4. Webview hardening (mandatory)
 
-Configured in Phase 1 from the first scaffold; audited in the Phase 5 release
-checklist:
+Configured in Phase 1 from the first scaffold; audited in
+[alpha-readiness-checklist.md](alpha-readiness-checklist.md):
 
 - **Strict Content Security Policy:** no remote script, style, or connect
-  sources. `connect-src` is limited to Tauri IPC and `http://127.0.0.1:*` (the
-  chat path). `default-src 'self'`.
+  sources. Production `connect-src` is limited to Tauri IPC and
+  `http://127.0.0.1:*` (the chat path). `default-src 'self'`.
+  Development merges `tauri.dev.conf.json` to allow `http://localhost:*` and
+  `ws://localhost:*` for Vite/HMR only (`npm run tauri:dev`).
 - **No remote content loading** of any kind.
 - **No arbitrary navigation:** the app is a single-page app; external links
   open in the system browser via the Tauri opener API, never inside the
   webview.
 - **No raw HTML rendering:** assistant output is rendered as sanitized
   markdown with raw HTML disabled. User input is never interpreted as HTML.
-- **Devtools disabled in production builds.**
+- **Devtools disabled in production release builds.** Tauri exposes devtools
+  only when the `devtools` Cargo feature is enabled on the `tauri` dependency.
+  Omnira does not enable that feature (`apps/desktop/src-tauri/Cargo.toml`).
+  Release builds therefore ship without devtools support; debug/`tauri dev`
+  builds may still allow inspector access per Tauri defaults.
 
 ## 5. Network defaults
 
