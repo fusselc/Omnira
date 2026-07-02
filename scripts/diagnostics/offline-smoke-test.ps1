@@ -4,9 +4,10 @@
 # This is a guided smoke test, not a fully automated end-to-end runner.
 #
 # Prerequisites (manual):
-#   - Omnira installed from a release build (NSIS installer or equivalent)
-#   - Bundled llama-server runtimes present (from installer)
-#   - At least one valid local .gguf registered in Omnira
+#   - Omnira installed from the alpha NSIS installer
+#   - Bundled llama-server runtimes present from the installer
+#   - At least one valid local .gguf available on disk
+#   - No GGUF model files or runtime binaries committed to the repository
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File scripts/diagnostics/offline-smoke-test.ps1
@@ -40,8 +41,10 @@ Write-Step 0 "Preconditions"
 
 Write-Host @"
 Confirm before continuing:
-  [ ] Omnira is installed (not just 'tauri dev')
-  [ ] A local .gguf is registered and was used successfully at least once online
+  [ ] Omnira is installed from the NSIS installer (not just 'tauri dev')
+  [ ] Bundled llama-server runtimes are present under the installed resources
+  [ ] A local .gguf is available on disk and will be referenced in place
+  [ ] No model downloads or network setup are required
   [ ] You can locate the Omnira executable (Start Menu shortcut or -InstallDir)
 "@
 
@@ -93,6 +96,8 @@ Launch Omnira from the Start Menu or:
 
 Verify:
   [ ] App opens without network error dialogs
+  [ ] First launch appears if no prior app data exists
+  [ ] Existing local settings load if prior app data exists
   [ ] Settings still shows local-first / offline copy
 "@
 
@@ -105,8 +110,10 @@ Write-Step 3 "Model + chat workflow (manual)"
 
 Write-Host @"
 In the UI (network still off):
-  [ ] Models screen shows your registered GGUF (not 'missing')
-  [ ] Start/use the model -- runtime reaches 'Running locally'
+  [ ] Select or confirm a local GGUF model file
+  [ ] Models screen shows the GGUF as available (not 'missing')
+  [ ] Omnira starts the managed llama-server runtime
+  [ ] Runtime reaches 'Running locally'
   [ ] Open Chat, send a short message, receive a streamed reply
   [ ] Stop generation mid-stream (optional)
   [ ] Quit Omnira completely
@@ -124,22 +131,26 @@ Relaunch Omnira (still offline):
   [ ] Previous conversation(s) still listed
   [ ] Message history intact
   [ ] Chat works again without reconnecting to the internet
+  [ ] Close Omnira completely after the relaunch check
 "@
 
 Read-Host "Press Enter after relaunch check succeeded"
 
 # ---------------------------------------------------------------------------
-# Step 5: Optional process/network observation
+# Step 5: Process/network observation
 # ---------------------------------------------------------------------------
-Write-Step 5 "Optional: runtime process check"
+Write-Step 5 "Process and network observation"
 
 $omnira = Get-Process -Name "Omnira" -ErrorAction SilentlyContinue
 $llama = Get-Process -Name "llama-server" -ErrorAction SilentlyContinue
 Write-Host "Omnira processes: $(@($omnira).Count)"
 Write-Host "llama-server processes: $(@($llama).Count)"
 Write-Host @"
-For stronger evidence, use Resource Monitor or Wireshark during Step 3 and
-confirm Omnira/llama-server do not initiate outbound connections.
+After closing Omnira, re-run this process check or Task Manager and confirm no
+llama-server.exe remains.
+
+For stronger network evidence, use Resource Monitor or Wireshark during Step 3
+and confirm Omnira/llama-server do not initiate outbound connections.
 
 Note: this script does not automate UI interaction; see docs/alpha-readiness-checklist.md.
 "@

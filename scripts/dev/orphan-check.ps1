@@ -7,7 +7,18 @@
 # a supervised llama-server and then sleeps), force-kills the test process,
 # and verifies every llama-server.exe it spawned dies with it.
 #
-# Usage: powershell -ExecutionPolicy Bypass -File scripts/dev/orphan-check.ps1
+# Prerequisites:
+#   - Run from a development checkout on Windows.
+#   - Fetched llama-server runtimes must exist under apps/desktop/src-tauri/binaries.
+#   - A test GGUF path/config expected by the ignored runtime test must be available.
+#
+# Usage:
+#   powershell -ExecutionPolicy Bypass -File scripts/dev/orphan-check.ps1
+#
+# If the harness cannot run in the current environment, validate manually by
+# starting Omnira from an installed build, loading a local GGUF, confirming
+# llama-server.exe appears, force-closing Omnira, and confirming llama-server.exe
+# exits with it.
 
 $ErrorActionPreference = "Stop"
 $srcTauri = Resolve-Path (Join-Path $PSScriptRoot "..\..\apps\desktop\src-tauri")
@@ -15,6 +26,7 @@ $srcTauri = Resolve-Path (Join-Path $PSScriptRoot "..\..\apps\desktop\src-tauri"
 $before = @(Get-Process -Name "llama-server" -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
 
 Write-Host "Starting harness (spawns supervised llama-server, then sleeps)..."
+Write-Host "Prerequisites: fetched runtimes and the ignored runtime test environment must be available."
 $logOut = Join-Path $env:TEMP "omnira-orphan-check.out.log"
 $logErr = Join-Path $env:TEMP "omnira-orphan-check.err.log"
 $proc = Start-Process -FilePath "cargo" -ArgumentList @(

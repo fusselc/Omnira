@@ -71,6 +71,10 @@ Dev mode uses the same script, or a user-supplied runtime path via Settings.
   artifact validation, offline-after-install testing, fresh install/relaunch
   validation, diagnostics redaction review, orphan-process testing, release
   notes preparation, and tag creation.
+- Installer/offline validation should prove the installed app can launch, select
+  a local GGUF in place, start the managed `llama-server`, produce a chat
+  response, close and reopen with conversation history intact, and repeat the
+  flow without network connectivity after installation.
 
 ## 5. No silent downloads
 

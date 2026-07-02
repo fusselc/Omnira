@@ -90,6 +90,9 @@ powershell -ExecutionPolicy Bypass -File scripts/packaging/aggregate-licenses.ps
 
 # Offline-after-install smoke test (manual UI steps; post-install)
 powershell -ExecutionPolicy Bypass -File scripts/diagnostics/offline-smoke-test.ps1
+
+# Orphan llama-server process check (development harness)
+powershell -ExecutionPolicy Bypass -File scripts/dev/orphan-check.ps1
 ```
 
 ## Useful checks
