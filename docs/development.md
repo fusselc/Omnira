@@ -68,7 +68,19 @@ npm run tauri build
 Produces the NSIS installer under `apps/desktop/src-tauri/target/release/bundle/`.
 Packaging requires the fetched runtimes to be present and checksum-valid.
 
-Before alpha, walk through [alpha-readiness-checklist.md](alpha-readiness-checklist.md).
+Before alpha, walk through the ordered release workflow in
+[alpha-readiness-checklist.md](alpha-readiness-checklist.md). At minimum, record
+evidence for:
+
+```powershell
+cd apps/desktop/src-tauri
+cargo check
+cargo test
+
+cd ..
+npm.cmd run build
+npm.cmd audit --omit=dev
+```
 
 ## Packaging helpers
 

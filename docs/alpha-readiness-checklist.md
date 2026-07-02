@@ -34,6 +34,90 @@ Current blocked items: **none identified**.
 - **Deferred, 2026-07-02**: `glib` alert GHSA-wrw7-89jp-8q8g is not present in
   the Windows MVP target graph; revisit before Linux packaging.
 
+## Repeatable Alpha Release Workflow
+
+Use this ordered workflow for each internal or public alpha candidate. Record
+evidence in the sections below before tagging or publishing installers.
+
+1. **Confirm scope**
+   - Confirm the release remains Windows-first local GGUF chat through managed
+     `llama-server`.
+   - Confirm no image generation, voice, RAG, agents, workflows, video, music,
+     ONNX, CUDA, plugins, model downloads, cloud calls, telemetry, or
+     architecture changes are included unless a separate milestone explicitly
+     approves them.
+
+2. **Start from a clean repository**
+   - Run `git status --short --branch`.
+   - Confirm there are no unintended local changes before building or tagging.
+
+3. **Run required validation commands**
+   - From `apps/desktop/src-tauri/`, run `cargo check`.
+   - From `apps/desktop/src-tauri/`, run `cargo test`.
+   - From `apps/desktop/`, run `npm.cmd run build`.
+   - From `apps/desktop/`, run `npm.cmd audit --omit=dev`.
+
+4. **Triage dependency alerts**
+   - Review GitHub Dependabot alerts before release.
+   - Fix supported-target runtime or production-impacting alerts before public
+     alpha.
+   - Document dev-only or unsupported-target decisions with rationale.
+   - Keep `glib` GHSA-wrw7-89jp-8q8g deferred until Linux packaging becomes in
+     scope; it is not present in the Windows MVP target graph.
+
+5. **Verify repository hygiene**
+   - Confirm no `*.gguf`, `llama-server` binaries, runtime DLLs, build outputs,
+     caches, `node_modules`, or `target` directories are committed.
+   - Confirm runtime data remains under `%LOCALAPPDATA%\Omnira\`.
+
+6. **Prepare runtime binaries**
+   - Run `scripts/packaging/fetch-llama-server.ps1`.
+   - Confirm the script verifies pinned SHA-256 checksums and fails closed on
+     mismatch.
+   - Do not commit fetched runtime binaries.
+
+7. **Verify license materials**
+   - Confirm `THIRD_PARTY_LICENSES` includes llama.cpp attribution, pinned
+     release metadata, artifact names, and checksums.
+   - Confirm `LICENSE` and `THIRD_PARTY_LICENSES` are included in the packaged
+     app resources.
+
+8. **Build and validate the NSIS installer**
+   - Run `npm run tauri build` from `apps/desktop/`.
+   - Confirm the release artifact is NSIS under
+     `apps/desktop/src-tauri/target/release/bundle/`.
+   - MSI remains deferred until after alpha and must not block alpha unless a
+     later release decision changes installer scope.
+
+9. **Run install and offline validation**
+   - Install to a clean directory.
+   - Launch, complete first-run model selection, register a local GGUF, send a
+     prompt, receive a response, quit, relaunch, and confirm conversation
+     persistence.
+   - Disconnect networking and repeat the normal local chat flow.
+   - Monitor for unexpected external network calls during normal chat.
+
+10. **Verify diagnostics and process cleanup**
+    - Export diagnostics without including paths and confirm user profile paths
+      are redacted and prompt/response text is absent.
+    - Inspect logs for prompt-free behavior.
+    - Run `scripts/dev/orphan-check.ps1` or complete an equivalent manual
+      harness to confirm no orphaned `llama-server.exe` remains after quit or
+      uninstall.
+
+11. **Evaluate release gates**
+    - Evaluate Windows code signing before public alpha. Code signing does not
+      block internal alpha testing unless maintainers explicitly decide it does.
+    - Review remaining not-yet-verified checklist items and record any accepted
+      risk.
+
+12. **Prepare release notes and tag**
+    - Prepare release notes summarizing validation evidence, known limitations,
+      and deferred items.
+    - Create the release tag only after the checklist evidence is recorded.
+    - Do not create a GitHub Release automatically unless the release process
+      explicitly calls for it.
+
 ## Security and Webview Hardening
 
 - [ ] **Not yet verified: CSP production review**

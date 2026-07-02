@@ -66,6 +66,11 @@ Dev mode uses the same script, or a user-supplied runtime path via Settings.
 - No network access is required at install time or first run.
 - Uninstall removes the application; user data under `%LOCALAPPDATA%\Omnira\`
   is preserved unless the user opts to remove it.
+- The repeatable alpha validation sequence lives in
+  [alpha-readiness-checklist.md](alpha-readiness-checklist.md), including NSIS
+  artifact validation, offline-after-install testing, fresh install/relaunch
+  validation, diagnostics redaction review, orphan-process testing, release
+  notes preparation, and tag creation.
 
 ## 5. No silent downloads
 
@@ -77,8 +82,9 @@ already has.
 
 Before public alpha, evaluate Windows code signing for the installer and the
 main executable: certificate type (EV vs. standard OV), cost, and CI signing
-workflow. Unsigned installers trigger SmartScreen warnings; this is a go/no-go
-checklist item for alpha, not a nice-to-have.
+workflow. Unsigned installers trigger SmartScreen warnings. Code signing should
+be evaluated before public alpha, but it does not block internal alpha testing
+unless maintainers explicitly make it a release gate.
 
 ## 7. Orchestrator implementation
 
