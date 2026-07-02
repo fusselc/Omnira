@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-brand-deep text-zinc-100 font-sans antialiased overflow-hidden select-none;
+  }
+
+  /* Support for light theme */
+  .light-theme {
+    @apply bg-zinc-50 text-zinc-900;
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.light-theme ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #18181b;
+  border-radius: 4px;
+}
+
+.light-theme ::-webkit-scrollbar-thumb {
+  background: #e4e4e7;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #27272a;
+}
+
+.light-theme ::-webkit-scrollbar-thumb:hover {
+  background: #d4d4d8;
+}
+
+/* Smooth glass effect cards */
+.glass-panel {
+  background: rgba(9, 9, 11, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.light-theme .glass-panel {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+/* Glow styling */
+.glow-accent {
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.1);
+}
+
+.glow-accent-strong {
+  box-shadow: 0 0 30px rgba(99, 102, 241, 0.2);
+}
+
+/* Stable height and flex layouts */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}

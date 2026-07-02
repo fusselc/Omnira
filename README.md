@@ -1,224 +1,93 @@
 # Omnira
 
-> A unified, local-first AI workstation for language, vision, audio, image generation, video generation, agents, and workflows.
-
-Omnira is an open source platform designed to bring modern AI tools together into a single, cohesive desktop experience.
-
-Today, users often rely on multiple disconnected applications:
-
-- LM Studio for local language models
-- Ollama for model management
-- ComfyUI for image and workflow pipelines
-- Open WebUI for chat interfaces
-- AnythingLLM for knowledge bases and RAG
-- Various standalone tools for audio, video, and automation
-
-Omnira aims to provide a unified experience while remaining modular, extensible, and fully local-first.
-
-## Vision
-
-The goal of Omnira is not to replace existing open source projects.
-
-Instead, Omnira serves as a common platform that can integrate and orchestrate multiple AI runtimes, model formats, and workflows through a consistent interface.
-
-Core principles:
-
-- Local-first
-- Open source
-- Provider-based architecture
-- Hardware acceleration where available
-- Cross-platform support
-- Extensible plugin ecosystem
-- User ownership of data and models
-
-## Current Status
-
-🚧 Early Development
-
-Omnira is currently in active development.
-
-The initial focus is building a solid foundation before expanding into advanced functionality.
-
-## MVP Goals
-
-The first milestone is intentionally small:
-
-- Load local GGUF models
-- Chat with models locally
-- Switch between installed models
-- Manage model settings
-- Build a provider-based architecture for future runtimes
-
-The project will expand incrementally after the core foundation is complete.
-
-## Planned Features
-
-### Language Models
-
-- GGUF support
-- llama.cpp integration
-- Multi-model management
-- Local chat interface
-- Conversation history
-- Prompt templates
-
-### Inference Providers
-
-- llama.cpp
-- ONNX Runtime
-- Windows ML
-- DirectML
-- TensorRT
-- OpenVINO
-- Future providers
-
-### Vision
-
-- Image classification
-- Object detection
-- Segmentation
-- OCR
-
-### Image Generation
-
-- Stable Diffusion support
-- ComfyUI integration
-- Workflow execution
-- Model management
-
-### Video Generation
-
-- Local video generation workflows
-- Model management
-- Pipeline orchestration
-
-### Audio
-
-- Speech-to-text
-- Text-to-speech
-- Voice assistants
-- Audio workflows
-
-### Agents
-
-- Local AI agents
-- Tool calling
-- Workflow automation
-- Multi-agent systems
-
-### Knowledge and RAG
-
-- Document ingestion
-- Local vector databases
-- Retrieval pipelines
-- Personal knowledge bases
-
-## Architecture
-
-Omnira is built around a provider architecture.
-
-Every inference backend implements a common interface.
-
-```python
-class InferenceProvider:
-    def load_model(self):
-        pass
-
-    def unload_model(self):
-        pass
-
-    def generate(self, prompt):
-        pass
-```
-
-This allows new runtimes to be added without changing the rest of the application.
-
-Example providers:
-
-```
-Providers
-
-├── llama.cpp
-├── ONNX Runtime
-├── Windows ML
-├── TensorRT
-├── DirectML
-└── OpenVINO
-```
-
-## Technology Stack
-
-### Frontend
-
-- React
-- TypeScript
-- Tailwind CSS
-- Tauri
-
-### Backend
-
-- Python
-
-### AI Frameworks
-
-- llama.cpp
-- ONNX Runtime
-- Windows ML
-- Hugging Face ecosystem
-
-## Why Omnira?
-
-Existing tools are excellent at solving individual problems.
-
-Omnira aims to provide a unified platform that connects these capabilities without requiring users to learn and manage multiple disconnected applications.
-
-The goal is to make local AI more accessible, more modular, and easier to extend.
-
-## Roadmap
-
-### Phase 1
-
-- Repository setup
-- Core architecture
-- Provider interfaces
-- GGUF model loading
-- Local chat interface
-
-### Phase 2
-
-- Model management
-- ONNX Runtime support
-- Settings system
-- Plugin framework
-
-### Phase 3
-
-- Image generation
-- Audio capabilities
-- Knowledge base support
-
-### Phase 4
-
-- Agents
-- Workflow orchestration
-- Advanced automation
-
-### Phase 5
-
-- Expanded provider ecosystem
-- Community contributions
-- Plugin marketplace
-
-## Contributing
-
-Contributions, feedback, ideas, and discussions are welcome.
-
-As the project matures, contribution guidelines and development documentation will be expanded.
+Omnira is a Windows-first, local-first, open-source AI desktop app designed to make
+open-source AI feel as simple, polished, and approachable as the big cloud assistants --
+while preserving privacy, modularity, extensibility, and power-user control.
+
+**Simple by default. Powerful when desired. Open for everyone.**
+
+## Current status
+
+Omnira is in early development. The current focus is the MVP described below.
+Nothing in the long-term vision section is implemented yet.
+
+## What the MVP is (current scope)
+
+The MVP does exactly one workflow, and does it well:
+
+1. Install and launch Omnira -- no terminal, no Python, no Docker, no manual services.
+2. Select an existing local `.gguf` model file from the Models screen.
+3. Omnira launches and manages a local `llama-server` process automatically.
+4. Chat locally; assistant responses stream into the UI.
+5. Stop generation at any time.
+6. Close and reopen Omnira; previous conversations are still there.
+7. Everything runs locally. No telemetry, accounts, cloud sync, or external
+   network calls by default. Omnira works with the internet disconnected.
+
+MVP screens: **Chat**, **Models**, **Settings**, and **Advanced Diagnostics**.
+
+The main UI says "Running locally". Technical details -- the selected accelerator
+(Vulkan or CPU), ports, process state, logs -- live in Advanced Diagnostics only.
+
+### Explicitly not in the MVP
+
+Model downloads, Hugging Face browsing, image generation, voice, speech-to-text,
+text-to-speech, memory/RAG, document ingestion, agents, tool calling, workflow
+automation, video, music, third-party plugins, CUDA builds, training, fine-tuning,
+and cloud providers. These are documented as future direction only (see below).
+
+## How it works
+
+Omnira is an orchestration layer over open-source AI runtimes -- not a replacement
+for llama.cpp, Ollama, LM Studio, ComfyUI, or similar tools.
+
+- **Tauri 2 desktop shell** with a **Rust core** that owns process supervision,
+  SQLite persistence, config, and typed IPC. There is no separate backend process
+  and no Python runtime.
+- **React + TypeScript + Tailwind CSS** frontend.
+- A bundled, pinned **llama-server** (llama.cpp) runtime in two variants:
+  Vulkan (GPU acceleration on NVIDIA/AMD/Intel) with automatic CPU fallback.
+- `llama-server` binds to loopback only and requires a per-session API key.
+- Conversations, settings, and the model registry are stored locally under
+  `%LOCALAPPDATA%\Omnira\`. Models are referenced in place -- Omnira never copies
+  your multi-gigabyte model files, and removing a model from Omnira never deletes
+  the file.
+
+See [docs/architecture.md](docs/architecture.md) for the full design and
+[ADR 0001](docs/adr/0001-rust-tauri-core-orchestrator.md) for the orchestrator
+decision. Alpha release verification: [alpha-readiness-checklist.md](docs/alpha-readiness-checklist.md).
+
+## Long-term vision (not current features)
+
+Omnira's long-term goal is a unified local AI workstation: one app that routes
+each model and task to the best-fit open-source runtime -- llama.cpp/GGUF for
+LLM chat and agents, Windows ML/ONNX for vision, audio, and NPU acceleration on
+Copilot+ PCs, and CUDA/TensorRT for heavy GPU workloads like large LLMs,
+diffusion, and video generation -- all behind one calm interface.
+
+That is a direction, not a promise of current functionality. The roadmap and the
+runtime strategy live in [docs/roadmap.md](docs/roadmap.md) and
+[docs/runtimes-and-routing.md](docs/runtimes-and-routing.md).
+
+## Documentation
+
+- [Vision](docs/vision.md) -- what Omnira is, who it is for, and what it is not
+- [Architecture](docs/architecture.md) -- desktop shell, Rust core, managed runtime
+- [ADR 0001](docs/adr/0001-rust-tauri-core-orchestrator.md) -- Rust core vs Python sidecar
+- [Alpha readiness checklist](docs/alpha-readiness-checklist.md) -- pre-release verification
+- [Roadmap](docs/roadmap.md) -- MVP phases and post-MVP capabilities
+- [ChatProvider](docs/chat-provider.md) -- the MVP provider contract
+- [Packaging and process model](docs/packaging-process-model.md)
+- [Local security boundary](docs/local-security-boundary.md)
+- [Data ownership and storage](docs/data-ownership-and-storage.md)
+- [Design principles](docs/design-principles.md)
+- [Runtimes and routing](docs/runtimes-and-routing.md) -- long-term runtime strategy
+- [Development](docs/development.md) -- building Omnira from source
+- [Privacy](docs/privacy.md) -- the local-first promise, in plain language
+- [Contributing](CONTRIBUTING.md)
 
 ## License
 
-Licensed under the Apache License 2.0.
-
-## Screenshots
-
-Coming soon.
+Omnira is licensed under the [Apache License 2.0](LICENSE). Bundled third-party
+components (including llama.cpp, MIT licensed) are attributed in
+[THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
