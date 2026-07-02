@@ -8,8 +8,13 @@ while preserving privacy, modularity, extensibility, and power-user control.
 
 ## Current status
 
-Omnira is in early development. The current focus is the MVP described below.
-Nothing in the long-term vision section is implemented yet.
+Omnira v0.1.0 Foundation is merged. The app now supports the Windows-first
+local GGUF chat MVP through a managed `llama-server` runtime, with conversation
+persistence and Advanced Diagnostics in place.
+
+The next milestone is **Alpha Polish**: release-readiness work around onboarding,
+model loading UX, diagnostics, installer testing, screenshots, documentation,
+and release workflow. Nothing in the long-term vision section is implemented yet.
 
 ## What the MVP is (current scope)
 
