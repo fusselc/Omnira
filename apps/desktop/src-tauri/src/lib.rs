@@ -21,7 +21,6 @@ pub fn run() {
     let storage = storage::Storage::open().expect("failed to open local database");
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             storage,

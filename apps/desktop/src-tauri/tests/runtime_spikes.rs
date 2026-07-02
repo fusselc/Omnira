@@ -46,6 +46,24 @@ fn gguf_inspect_rejects_garbage() {
     std::fs::remove_file(&tmp).ok();
 }
 
+#[test]
+fn gguf_inspect_rejects_truncated_metadata_value() {
+    let tmp = std::env::temp_dir().join("omnira-truncated-metadata.gguf");
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&0x4655_4747u32.to_le_bytes()); // GGUF
+    bytes.extend_from_slice(&3u32.to_le_bytes()); // version
+    bytes.extend_from_slice(&0u64.to_le_bytes()); // tensor count
+    bytes.extend_from_slice(&1u64.to_le_bytes()); // metadata kv count
+    bytes.extend_from_slice(&4u64.to_le_bytes()); // key length
+    bytes.extend_from_slice(b"test");
+    bytes.extend_from_slice(&0u32.to_le_bytes()); // u8 metadata value, then EOF
+    std::fs::write(&tmp, bytes).unwrap();
+
+    let err = gguf::inspect(&tmp).expect_err("truncated metadata value must be rejected");
+    assert_eq!(err.code, omnira_lib::errors::ErrorCode::ModelFormatInvalid);
+    std::fs::remove_file(&tmp).ok();
+}
+
 async fn start_runtime() -> runtime::ManagedRuntime {
     runtime::start(
         None,

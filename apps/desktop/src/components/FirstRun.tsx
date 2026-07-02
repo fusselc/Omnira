@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
 import { Shield, FolderOpen } from "lucide-react";
 import { ipc, toAppError, type AppError, type Settings } from "../lib/ipc";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { pickGgufFile } from "../lib/dialog";
 
 /**
  * First-run flow (docs/design-principles.md section 5):
@@ -31,12 +31,8 @@ export function FirstRun({
 
   const pickModel = async () => {
     setError(null);
-    const selected = await open({
-      multiple: false,
-      title: "Choose a GGUF model file",
-      filters: [{ name: "GGUF models", extensions: ["gguf"] }],
-    });
-    if (typeof selected !== "string") return;
+    const selected = await pickGgufFile();
+    if (!selected) return;
     try {
       const model = await ipc.addModel(selected);
       setAddedModel(model.name);

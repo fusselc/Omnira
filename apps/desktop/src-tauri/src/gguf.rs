@@ -64,8 +64,13 @@ impl<R: Read> Reader<R> {
     }
 
     fn skip(&mut self, n: u64) -> Result<(), AppError> {
-        std::io::copy(&mut self.inner.by_ref().take(n), &mut std::io::sink())
+        let copied = std::io::copy(&mut self.inner.by_ref().take(n), &mut std::io::sink())
             .map_err(|e| invalid(format!("truncated metadata: {e}")))?;
+        if copied != n {
+            return Err(invalid(format!(
+                "truncated metadata: expected {n} bytes, got {copied}"
+            )));
+        }
         Ok(())
     }
 
