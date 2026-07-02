@@ -76,6 +76,10 @@ MVP scope remains **local GGUF chat via managed llama-server on Windows** only.
   - `scripts/packaging/fetch-llama-server.ps1` verifies SHA-256; tamper a cached
     zip locally and confirm the script exits nonzero without bundling.
 
+- [ ] **Deferred non-Windows dependency alerts documented**
+  - `glib` GHSA-wrw7-89jp-8q8g is not present in the Windows MVP target graph;
+    revisit before Linux packaging.
+
 ## Install lifecycle
 
 - [ ] **Fresh install / relaunch test**
