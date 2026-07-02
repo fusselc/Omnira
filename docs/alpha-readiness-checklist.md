@@ -86,14 +86,18 @@ evidence in the sections below before tagging or publishing installers.
    - Run `npm run tauri build` from `apps/desktop/`.
    - Confirm the release artifact is NSIS under
      `apps/desktop/src-tauri/target/release/bundle/`.
+   - Confirm bundled `llama-server` resources are present in the packaged app
+     and were produced by `scripts/packaging/fetch-llama-server.ps1`.
    - MSI remains deferred until after alpha and must not block alpha unless a
      later release decision changes installer scope.
 
 9. **Run install and offline validation**
-   - Install to a clean directory.
-   - Launch, complete first-run model selection, register a local GGUF, send a
-     prompt, receive a response, quit, relaunch, and confirm conversation
-     persistence.
+   - Install to a clean directory from the NSIS artifact.
+   - Launch for the first time, complete local GGUF selection, and confirm the
+     model file is referenced in place.
+   - Confirm Omnira starts the managed `llama-server` runtime.
+   - Send a prompt, receive a response, quit, relaunch, and confirm
+     conversation persistence.
    - Disconnect networking and repeat the normal local chat flow.
    - Monitor for unexpected external network calls during normal chat.
 
@@ -161,14 +165,16 @@ evidence in the sections below before tagging or publishing installers.
     persistence after close/reopen were manually validated.
 
 - [ ] **Not yet verified: Offline-after-install verification**
-  - On a machine with a completed install, bundled runtimes, and at least one
-    registered local GGUF: disconnect all networking (Wi-Fi/Ethernet off or
-    airplane mode).
-  - Run through: launch -> select model -> send message -> stream response ->
-    stop generation -> relaunch -> prior conversation still present.
-  - Automated helper: `scripts/diagnostics/offline-smoke-test.ps1` (manual steps
-    and optional checks).
-  - Evidence needed: dated offline install smoke-test notes.
+  - Prerequisites: completed NSIS install, bundled runtimes present from the
+    installer, and at least one valid local GGUF available on disk.
+  - Disconnect all networking (Wi-Fi/Ethernet off or airplane mode).
+  - Run through: first launch or relaunch -> select/confirm local GGUF -> managed
+    `llama-server` reaches "Running locally" -> send message -> receive streamed
+    response -> quit -> relaunch -> prior conversation still present.
+  - Automated helper: `scripts/diagnostics/offline-smoke-test.ps1` (guided
+    manual steps and optional process/network checks).
+  - Evidence needed: dated offline install smoke-test notes. This remains not
+    yet verified until a packaged install is exercised locally.
 
 - [ ] **Not yet verified: No external network calls at runtime**
   - During the offline test above, monitor with Resource Monitor, Wireshark, or
@@ -231,23 +237,33 @@ evidence in the sections below before tagging or publishing installers.
 ## Install Lifecycle
 
 - [ ] **Not yet verified: Fresh install / relaunch test**
-  - Silent or interactive install to a clean directory.
-  - First launch completes onboarding (or skip path).
-  - Register model, chat, quit, relaunch: data persists under
+  - Install the NSIS artifact to a clean directory.
+  - First launch completes local GGUF model selection or the existing-data path.
+  - Confirm Omnira starts the managed `llama-server` runtime.
+  - Send a chat prompt and receive a response.
+  - Quit and relaunch: conversation history persists under
     `%LOCALAPPDATA%\Omnira\`.
-  - Evidence needed: dated install/relaunch notes.
+  - Evidence needed: dated install/relaunch notes. This remains not yet verified
+    until a packaged install is exercised locally.
 
 - [ ] **Not yet verified: Uninstall / orphan-process test**
   - Run `scripts/dev/orphan-check.ps1` before release (Job Object verification).
+  - If the harness cannot run, manually start Omnira from an installed build,
+    load a local GGUF, confirm `llama-server.exe` appears, force-close Omnira,
+    and confirm `llama-server.exe` exits with it.
   - After manual uninstall, confirm no orphaned `llama-server.exe` remains when
     Omnira is not running.
-  - Evidence needed: orphan-check output and manual uninstall notes.
+  - Evidence needed: orphan-check output or manual harness notes plus manual
+    uninstall notes.
 
 ## Installer Scope (MVP Alpha)
 
 - [ ] **Not yet verified: NSIS installer verified**
   - Release artifact is NSIS (see `tauri.conf.json` `bundle.targets`).
-  - Evidence needed: release artifact file listing and install smoke-test.
+  - Confirm the package includes the Omnira executable, bundled
+    `llama-server` runtimes, `LICENSE`, and `THIRD_PARTY_LICENSES`.
+  - Evidence needed: release artifact file listing and install smoke-test. This
+    remains not yet verified until a release bundle is built and inspected.
 
 - [x] **Deferred: MSI installer**
   - **MSI is deferred** post-alpha; do not block alpha on MSI.
