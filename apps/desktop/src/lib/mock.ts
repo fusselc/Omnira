@@ -124,9 +124,10 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
     case "start_runtime": {
       runtime = {
         state: "ready",
-        variant: "vulkan",
-        accelerator_label: "GPU (Vulkan)",
-        fallback_reason: null,
+        variant: "cpu",
+        accelerator_label: "CPU",
+        fallback_reason:
+          "Vulkan unavailable: mock preview — GPU acceleration could not start in browser dev mode",
         model_id: args!.modelId as string,
         port: 12345,
         context_size: 8192,
@@ -153,7 +154,8 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
         recent_log_lines: [
           "2026-07-01 12:00:00.000 [INFO] app.start 0.1.0",
           "2026-07-01 12:00:05.132 [INFO] runtime.spawn variant=Vulkan attempt=1 port=12345",
-          "2026-07-01 12:00:09.410 [INFO] runtime.ready variant=Vulkan port=12345",
+          "2026-07-01 12:00:06.010 [INFO] runtime.spawn variant=Cpu attempt=1 port=12345",
+          "2026-07-01 12:00:09.410 [INFO] runtime.ready variant=Cpu port=12345",
         ],
         recent_errors: [],
       };

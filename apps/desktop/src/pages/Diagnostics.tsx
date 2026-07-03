@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw, Download } from "lucide-react";
 import {
   ipc,
   toAppError,
   type AppError,
   type DiagnosticsSnapshot,
+  type ModelEntry,
 } from "../lib/ipc";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { DiagnosticsRuntimePanel } from "../components/DiagnosticsRuntimePanel";
+import { DiagnosticsLocalApiPanel } from "../components/DiagnosticsLocalApiPanel";
 
 /**
  * Advanced Diagnostics: the only screen that names the accelerator, ports,
@@ -14,12 +17,19 @@ import { ErrorBanner } from "../components/ErrorBanner";
  */
 export function Diagnostics() {
   const [snap, setSnap] = useState<DiagnosticsSnapshot | null>(null);
+  const [models, setModels] = useState<ModelEntry[]>([]);
   const [error, setError] = useState<AppError | null>(null);
   const [includePaths, setIncludePaths] = useState(false);
   const [exportedTo, setExportedTo] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    setSnap(await ipc.diagnosticsSnapshot());
+    const snapshot = await ipc.diagnosticsSnapshot();
+    setSnap(snapshot);
+    if (snapshot.runtime.model_id) {
+      setModels(await ipc.listModels());
+    } else {
+      setModels([]);
+    }
   }, []);
 
   useEffect(() => {
@@ -38,8 +48,21 @@ export function Diagnostics() {
     }
   };
 
+  const displayErrors = useMemo(() => {
+    if (!snap) return [];
+    const errors = [...snap.recent_errors];
+    const last = snap.runtime.last_error;
+    if (
+      snap.runtime.state === "error" &&
+      last &&
+      !errors.some((e) => e.code === last.code && e.message === last.message)
+    ) {
+      errors.unshift(last);
+    }
+    return errors;
+  }, [snap]);
+
   if (!snap) return null;
-  const rt = snap.runtime;
 
   return (
     <div className="mx-auto flex h-full max-w-4xl flex-col gap-4 overflow-y-auto px-8 py-6">
@@ -61,31 +84,29 @@ export function Diagnostics() {
 
       {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
 
-      <section className="grid grid-cols-2 gap-3">
-        <Stat label="Runtime state" value={rt.state} />
-        <Stat
-          label="Accelerator"
-          value={rt.accelerator_label ?? "Not running"}
-        />
-        <Stat
-          label="Local API binding"
-          value={rt.port ? `127.0.0.1:${rt.port} (loopback only, key required)` : "Not bound"}
-        />
-        <Stat
-          label="Context size"
-          value={rt.context_size ? `${rt.context_size} tokens` : "n/a"}
-        />
-        {rt.fallback_reason && (
-          <Stat label="Fallback reason" value={rt.fallback_reason} wide />
-        )}
-        {rt.model_id && <Stat label="Loaded model id" value={rt.model_id} wide />}
+      <DiagnosticsRuntimePanel runtime={snap.runtime} models={models} />
+      <DiagnosticsLocalApiPanel port={snap.runtime.port} state={snap.runtime.state} />
+
+      <section className="rounded-xl border border-brand-border bg-brand-card p-4">
+        <h2 className="text-sm font-semibold">Support information</h2>
+        <p className="mt-0.5 text-xs text-brand-textMuted">
+          Paths and version details for troubleshooting. Everything stays on this
+          computer unless you export a report yourself.
+        </p>
+        <dl className="mt-4 space-y-2 text-sm">
+          <PathRow label="App version" value={snap.app_version} mono />
+          <PathRow label="Omnira data" value={snap.data_dir} mono />
+          <PathRow label="Settings" value={snap.config_path} mono />
+          <PathRow label="Conversations database" value={snap.db_path} mono />
+          <PathRow label="Logs" value={snap.log_dir} mono />
+        </dl>
       </section>
 
-      {snap.recent_errors.length > 0 && (
+      {displayErrors.length > 0 && (
         <section className="rounded-xl border border-brand-border bg-brand-card p-4">
           <h2 className="mb-2 text-sm font-semibold">Recent runtime errors</h2>
           <ul className="space-y-2">
-            {snap.recent_errors.map((e, i) => (
+            {displayErrors.map((e, i) => (
               <li key={i} className="text-xs">
                 <span className="font-mono text-accent-danger">{e.code}</span>{" "}
                 <span className="text-brand-textMuted">{e.message}</span>
@@ -143,15 +164,21 @@ export function Diagnostics() {
   );
 }
 
-function Stat({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
+function PathRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
   return (
-    <div
-      className={`rounded-xl border border-brand-border bg-brand-card px-4 py-3 ${
-        wide ? "col-span-2" : ""
-      }`}
-    >
+    <div>
       <dt className="text-xs text-brand-textMuted">{label}</dt>
-      <dd className="mt-1 break-words font-mono text-sm">{value}</dd>
+      <dd className={`mt-0.5 break-all ${mono ? "font-mono text-xs text-zinc-500" : ""}`}>
+        {value}
+      </dd>
     </div>
   );
 }
