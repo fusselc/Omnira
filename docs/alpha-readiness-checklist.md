@@ -151,6 +151,8 @@ evidence in the sections below before tagging or publishing installers.
 - [ ] **Not yet verified: llama-server loopback + api-key verification**
   - From Advanced Diagnostics or logs, confirm runtime binds to `127.0.0.1`
     only.
+  - Advanced Diagnostics should name Vulkan vs CPU and explain CPU fallback in
+    friendly language when fallback data is present.
   - Confirm chat requests without the session Bearer token return 401.
   - Confirm api-key is regenerated on each runtime start and is not written to
     disk or logs.
