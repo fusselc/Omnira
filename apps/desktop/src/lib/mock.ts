@@ -90,8 +90,11 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
       if (c) c.title = args!.title as string;
       return;
     }
-    case "set_conversation_model":
+    case "set_conversation_model": {
+      const c = conversations.find((c) => c.id === args!.id);
+      if (c) c.model_id = args!.modelId as string;
       return;
+    }
     case "delete_conversation": {
       const idx = conversations.findIndex((c) => c.id === args!.id);
       if (idx >= 0) conversations.splice(idx, 1);

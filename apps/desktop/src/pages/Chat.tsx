@@ -37,7 +37,31 @@ export function Chat({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const generating = streamingText !== null;
-  const selectedModelId = runtime.model_id;
+  const activeConvo = conversations.find((c) => c.id === activeId);
+  /** Model tied to the active conversation (persisted), not the live runtime. */
+  const conversationModelId = activeConvo?.model_id ?? null;
+  /** Dropdown reflects the conversation's model when one is selected. */
+  const dropdownModelId = conversationModelId ?? runtime.model_id;
+  const conversationModel = models.find((m) => m.id === conversationModelId);
+  const runtimeModel = models.find((m) => m.id === runtime.model_id);
+  /** Registry entry removed; conversation still references the old id. */
+  const conversationModelUnregistered =
+    conversationModelId != null && conversationModel === undefined;
+  /** Registry entry exists but the on-disk .gguf is gone. */
+  const conversationModelFileMissing = conversationModel?.status === "missing";
+  const conversationModelInvalid = conversationModel?.status === "invalid";
+  const needsRuntimeReload =
+    conversationModelId != null &&
+    conversationModel?.status === "ok" &&
+    conversationModelId !== runtime.model_id &&
+    !generating;
+  const canSend =
+    runtime.state === "ready" &&
+    !needsRuntimeReload &&
+    !conversationModelUnregistered &&
+    !conversationModelFileMissing &&
+    !conversationModelInvalid &&
+    runtime.model_id === dropdownModelId;
 
   const loadConversations = useCallback(async () => {
     setConversations(await ipc.listConversations());
@@ -68,6 +92,10 @@ export function Chat({
     setError(null);
     try {
       await ipc.startRuntime(modelId);
+      if (activeId) {
+        await ipc.setConversationModel(activeId, modelId);
+        await loadConversations();
+      }
     } catch (e) {
       setError(toAppError(e));
     } finally {
@@ -75,8 +103,13 @@ export function Chat({
     }
   };
 
+  const loadConversationModel = async () => {
+    if (!conversationModelId) return;
+    await selectModel(conversationModelId);
+  };
+
   const newConversation = async () => {
-    const convo = await ipc.createConversation("New conversation", selectedModelId);
+    const convo = await ipc.createConversation("New conversation", runtime.model_id);
     await loadConversations();
     setActiveId(convo.id);
   };
@@ -93,7 +126,7 @@ export function Chat({
 
   const send = async () => {
     const content = draft.trim();
-    if (!content || generating || runtime.state !== "ready") return;
+    if (!content || generating || !canSend) return;
     setError(null);
     setDraft("");
 
@@ -101,13 +134,18 @@ export function Chat({
     let convoId = activeId;
     if (!convoId) {
       const title = content.length > 48 ? `${content.slice(0, 48)}...` : content;
-      const convo = await ipc.createConversation(title, selectedModelId);
+      const convo = await ipc.createConversation(title, runtime.model_id);
       convoId = convo.id;
       setActiveId(convoId);
       await loadConversations();
     } else if (messages.length === 0) {
       const title = content.length > 48 ? `${content.slice(0, 48)}...` : content;
       await ipc.renameConversation(convoId, title);
+      await loadConversations();
+    }
+
+    if (dropdownModelId && activeConvo?.model_id !== dropdownModelId) {
+      await ipc.setConversationModel(convoId, dropdownModelId);
       await loadConversations();
     }
 
@@ -162,7 +200,6 @@ export function Chat({
     });
   };
 
-  const activeConvo = conversations.find((c) => c.id === activeId);
   const readyModels = models.filter((m) => m.status === "ok");
 
   return (
@@ -224,7 +261,7 @@ export function Chat({
           </div>
           <div className="flex items-center gap-3">
             <select
-              value={selectedModelId ?? ""}
+              value={dropdownModelId ?? ""}
               onChange={(e) => e.target.value && void selectModel(e.target.value)}
               disabled={runtime.state === "starting" || generating}
               className="max-w-56 rounded-lg border border-brand-border bg-brand-card px-3 py-1.5 text-xs text-zinc-100 outline-none focus:border-accent-primary/50"
@@ -232,6 +269,18 @@ export function Chat({
               <option value="" disabled>
                 {readyModels.length ? "Choose a model" : "No models added"}
               </option>
+              {conversationModelUnregistered && conversationModelId && (
+                <option value={conversationModelId} disabled>
+                  Model no longer available
+                </option>
+              )}
+              {conversationModel &&
+                conversationModel.status !== "ok" &&
+                !readyModels.some((m) => m.id === conversationModel.id) && (
+                  <option value={conversationModel.id} disabled>
+                    {conversationModel.name} (unavailable)
+                  </option>
+                )}
               {readyModels.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
@@ -241,6 +290,70 @@ export function Chat({
             <StatusPill status={runtime} />
           </div>
         </header>
+
+        {conversationModelUnregistered && (
+          <div className="mx-5 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent-danger/30 bg-accent-danger/10 px-4 py-3 text-sm">
+            <p className="text-brand-textMuted">
+              This conversation used a model that&apos;s no longer available in
+              Omnira. Re-add the model on the Models screen, or delete this
+              conversation and start a new one.
+            </p>
+            <button
+              onClick={onGoToModels}
+              className="shrink-0 rounded-lg border border-brand-border px-3 py-1.5 text-xs font-medium hover:bg-brand-hover"
+            >
+              Go to Models
+            </button>
+          </div>
+        )}
+
+        {conversationModelFileMissing && (
+          <div className="mx-5 mt-3 rounded-lg border border-accent-danger/30 bg-accent-danger/10 px-4 py-3 text-sm">
+            <p className="text-brand-textMuted">
+              This conversation&apos;s model file is missing:{" "}
+              <span className="font-medium text-zinc-100">
+                {conversationModel?.name ?? "Unknown model"}
+              </span>
+              . Restore the file on disk or remove the entry from Models.
+            </p>
+          </div>
+        )}
+
+        {conversationModelInvalid && (
+          <div className="mx-5 mt-3 rounded-lg border border-accent-danger/30 bg-accent-danger/10 px-4 py-3 text-sm">
+            <p className="text-brand-textMuted">
+              This conversation&apos;s model file is invalid or corrupt. Choose
+              a different model or re-add a valid .gguf file on the Models
+              screen.
+            </p>
+          </div>
+        )}
+
+        {needsRuntimeReload && (
+          <div className="mx-5 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent-warning/30 bg-accent-warning/10 px-4 py-3 text-sm">
+            <p className="text-brand-textMuted">
+              This conversation uses{" "}
+              <span className="font-medium text-zinc-100">
+                {conversationModel?.name ?? "another model"}
+              </span>
+              {runtimeModel && runtime.state === "ready" ? (
+                <>
+                  , but the chat engine is running{" "}
+                  <span className="font-medium text-zinc-100">{runtimeModel.name}</span>.
+                </>
+              ) : (
+                <> — load it to continue chatting.</>
+              )}
+            </p>
+            <button
+              onClick={() => void loadConversationModel()}
+              disabled={runtime.state === "starting" || conversationModel?.status !== "ok"}
+              className="shrink-0 rounded-lg bg-accent-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-primary/90 disabled:opacity-40"
+            >
+              Load {conversationModel?.name ?? "model"}
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="px-5 pt-3">
@@ -315,13 +428,19 @@ export function Chat({
               }}
               rows={Math.min(6, Math.max(1, draft.split("\n").length))}
               placeholder={
-                runtime.state === "ready"
-                  ? "Message your local model..."
-                  : runtime.state === "starting"
-                    ? "Starting model..."
-                    : "Choose a model to start"
+                conversationModelUnregistered
+                  ? "This conversation's model is no longer available..."
+                  : conversationModelFileMissing
+                    ? "Restore the model file to continue..."
+                    : needsRuntimeReload
+                      ? "Load this conversation's model to continue..."
+                      : runtime.state === "ready"
+                        ? "Message your local model..."
+                        : runtime.state === "starting"
+                          ? "Starting model..."
+                          : "Choose a model to start"
               }
-              disabled={runtime.state !== "ready" || generating}
+              disabled={!canSend || generating}
               className="flex-1 resize-none rounded-xl border border-brand-border bg-brand-card px-4 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-accent-primary/50 disabled:opacity-60"
             />
             {generating ? (
@@ -335,7 +454,7 @@ export function Chat({
             ) : (
               <button
                 onClick={() => void send()}
-                disabled={runtime.state !== "ready" || !draft.trim()}
+                disabled={!canSend || !draft.trim()}
                 className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent-primary text-white hover:bg-accent-primary/90 disabled:opacity-40"
                 title="Send"
               >
