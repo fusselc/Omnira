@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use rusqlite::Connection;
 
 use crate::errors::AppError;
+use crate::gguf;
 use crate::paths;
 use crate::types::{
     Conversation, Message, MessageRole, MessageStatus, ModelEntry, ModelStatus,
@@ -53,6 +54,17 @@ fn now() -> String {
 
 fn new_id() -> String {
     uuid::Uuid::new_v4().to_string()
+}
+
+fn model_status(path: &str) -> ModelStatus {
+    let path = std::path::Path::new(path);
+    if !path.is_file() {
+        return ModelStatus::Missing;
+    }
+    match gguf::inspect(path) {
+        Ok(_) => ModelStatus::Ok,
+        Err(_) => ModelStatus::Invalid,
+    }
 }
 
 impl Storage {
@@ -116,11 +128,7 @@ impl Storage {
             )?;
             let rows = stmt.query_map([], |r| {
                 let path: String = r.get(2)?;
-                let status = if std::path::Path::new(&path).is_file() {
-                    ModelStatus::Ok
-                } else {
-                    ModelStatus::Missing
-                };
+                let status = model_status(&path);
                 Ok(ModelEntry {
                     id: r.get(0)?,
                     name: r.get(1)?,

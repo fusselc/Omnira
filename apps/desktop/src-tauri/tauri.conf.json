@@ -38,6 +38,14 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "skip"
+      },
+      "nsis": {
+        "installMode": "perMachine"
+      }
+    },
     "resources": {
       "binaries/vulkan": "runtimes/vulkan",
       "binaries/cpu": "runtimes/cpu",
