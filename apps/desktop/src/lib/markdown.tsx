@@ -41,6 +41,35 @@ function renderInline(text: string, keyBase: string): React.ReactNode[] {
   return nodes;
 }
 
+function CodeBlock({ code }: { code: string }) {
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  return (
+    <div className="group relative my-2">
+      <button
+        onClick={() => void handleCopy()}
+        className="absolute top-2 right-2 hidden rounded border border-brand-border bg-brand-hover px-2 py-1 text-xs text-brand-textMuted transition-colors hover:text-zinc-100 group-hover:block"
+        title="Copy code"
+      >
+        {copied ? "Copied!" : "Copy"}
+      </button>
+      <pre className="overflow-x-auto rounded-lg border border-brand-border bg-brand-card p-3 font-mono text-[0.8rem] leading-relaxed">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
 export function Markdown({ text }: { text: string }) {
   const blocks: React.ReactNode[] = [];
   const lines = text.split("\n");
@@ -60,12 +89,7 @@ export function Markdown({ text }: { text: string }) {
       }
       i++; // closing fence (or EOF)
       blocks.push(
-        <pre
-          key={blockIdx++}
-          className="my-2 overflow-x-auto rounded-lg border border-brand-border bg-brand-card p-3 font-mono text-[0.8rem] leading-relaxed"
-        >
-          <code>{code.join("\n")}</code>
-        </pre>,
+        <CodeBlock key={blockIdx++} code={code.join("\n")} />
       );
       continue;
     }
