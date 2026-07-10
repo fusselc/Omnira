@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Send, Square, Trash2, Boxes } from "lucide-react";
+import { Plus, Send, Square, Trash2, Boxes, Pencil } from "lucide-react";
 import {
   ipc,
   toAppError,
@@ -19,10 +19,12 @@ export function Chat({
   runtime,
   refreshRuntime,
   onGoToModels,
+  onGoToDiagnostics,
 }: {
   runtime: RuntimeStatus;
   refreshRuntime: () => Promise<void>;
   onGoToModels: () => void;
+  onGoToDiagnostics: () => void;
 }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [models, setModels] = useState<ModelEntry[]>([]);
@@ -35,6 +37,11 @@ export function Chat({
   const streamRef = useRef<StreamHandle | null>(null);
   const streamBufferRef = useRef("");
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Renaming & Fallback states
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [dismissedFallback, setDismissedFallback] = useState(false);
 
   const generating = streamingText !== null;
   const activeConvo = conversations.find((c) => c.id === activeId);
@@ -88,6 +95,10 @@ export function Chat({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, streamingText]);
 
+  useEffect(() => {
+    setDismissedFallback(false);
+  }, [runtime.model_id]);
+
   const selectModel = async (modelId: string) => {
     setError(null);
     try {
@@ -109,15 +120,53 @@ export function Chat({
   };
 
   const newConversation = async () => {
+    // Defensive check: prevent programmatically creating empty conversations if not ready
+    if (runtime.state !== "ready") return;
     const convo = await ipc.createConversation("New conversation", runtime.model_id);
     await loadConversations();
     setActiveId(convo.id);
   };
 
   const removeConversation = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this conversation? This cannot be undone.")) return;
     await ipc.deleteConversation(id);
     if (activeId === id) setActiveId(null);
     await loadConversations();
+  };
+
+  const startRename = (convo: Conversation, e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
+    if (generating) return; // cannot conflict with active streaming
+    setEditingId(convo.id);
+    setEditTitle(convo.title);
+  };
+
+  const cancelRename = () => {
+    setEditingId(null);
+    setEditTitle("");
+  };
+
+  const saveRename = async (id: string) => {
+    const trimmed = editTitle.trim();
+    if (!trimmed) {
+      // Revert/cancel empty titles
+      cancelRename();
+      return;
+    }
+    const original = conversations.find((c) => c.id === id)?.title;
+    if (trimmed === original) {
+      cancelRename();
+      return;
+    }
+    try {
+      await ipc.renameConversation(id, trimmed);
+      await loadConversations();
+    } catch (e) {
+      setError(toAppError(e));
+    } finally {
+      setEditingId(null);
+      setEditTitle("");
+    }
   };
 
   const stopGeneration = () => {
@@ -205,13 +254,15 @@ export function Chat({
   return (
     <div className="flex h-full">
       {/* Conversation list */}
-      <aside className="flex w-64 shrink-0 flex-col border-r border-brand-border">
+      <aside className="flex w-64 shrink-0 flex-col border-r border-brand-border bg-brand-card/30">
         <div className="flex items-center justify-between px-4 py-3">
           <h2 className="text-sm font-medium text-brand-textMuted">Conversations</h2>
           <button
             onClick={() => void newConversation()}
-            className="rounded-lg p-1.5 text-brand-textMuted hover:bg-brand-hover hover:text-zinc-100"
-            title="New conversation"
+            disabled={runtime.state !== "ready"}
+            className="rounded-lg p-1.5 text-brand-textMuted hover:bg-brand-hover hover:text-zinc-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-brand-textMuted transition-all"
+            title={runtime.state === "ready" ? "New conversation" : "Please select and start a model first"}
+            aria-label={runtime.state === "ready" ? "New conversation" : "New conversation disabled (select and start a model first)"}
           >
             <Plus size={16} />
           </button>
@@ -225,27 +276,75 @@ export function Chat({
           {conversations.map((c) => (
             <div
               key={c.id}
-              className={`group flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer ${
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "F2" && !generating) {
+                  startRename(c, e);
+                }
+              }}
+              className={`group flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50 ${
                 c.id === activeId
-                  ? "bg-brand-hover text-zinc-100"
+                  ? "bg-brand-hover text-zinc-100 font-medium"
                   : "text-brand-textMuted hover:bg-brand-hover/60"
               }`}
               onClick={() => setActiveId(c.id)}
             >
-              <span className="flex-1 truncate">{c.title}</span>
-              <span className="hidden text-[10px] text-zinc-600 group-hover:hidden">
-                {formatWhen(c.updated_at)}
-              </span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void removeConversation(c.id);
-                }}
-                className="hidden shrink-0 rounded p-1 text-zinc-600 hover:text-accent-danger group-hover:block"
-                title="Delete conversation"
-              >
-                <Trash2 size={13} />
-              </button>
+              {editingId === c.id ? (
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  onBlur={() => void saveRename(c.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void saveRename(c.id);
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelRename();
+                    }
+                  }}
+                  className="flex-1 rounded border border-accent-primary/60 bg-brand-card px-1 py-0.5 text-sm text-zinc-100 outline-none"
+                  autoFocus
+                  onFocus={(e) => e.target.select()}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <>
+                  <span
+                    className="flex-1 truncate"
+                    onDoubleClick={(e) => startRename(c, e)}
+                  >
+                    {c.title}
+                  </span>
+                  <span className="text-[10px] text-zinc-600 group-hover:hidden">
+                    {formatWhen(c.updated_at)}
+                  </span>
+                  <div className="hidden shrink-0 items-center gap-1 group-hover:flex">
+                    <button
+                      onClick={(e) => startRename(c, e)}
+                      disabled={generating}
+                      className="rounded p-0.5 text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
+                      title="Rename conversation"
+                      aria-label="Rename conversation"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void removeConversation(c.id);
+                      }}
+                      disabled={generating}
+                      className="rounded p-0.5 text-zinc-500 hover:text-accent-danger disabled:opacity-30"
+                      title="Delete conversation"
+                      aria-label="Delete conversation"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           ))}
         </div>
@@ -361,6 +460,31 @@ export function Chat({
           </div>
         )}
 
+        {runtime.state === "ready" && runtime.fallback_reason && !dismissedFallback && (
+          <div className="px-5 pt-3">
+            <div className="flex items-center justify-between rounded-xl border border-accent-warning/30 bg-accent-warning/5 px-4 py-3 text-sm text-zinc-200">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-accent-warning font-semibold">⚡ Performance Note:</span>
+                <span>Running in CPU mode. Responses may be slower because GPU acceleration was unavailable.</span>
+                <button
+                  onClick={onGoToDiagnostics}
+                  className="ml-1 text-xs font-semibold text-accent-primary hover:underline"
+                >
+                  View details
+                </button>
+              </div>
+              <button
+                onClick={() => setDismissedFallback(true)}
+                className="ml-4 text-xs text-brand-textMuted hover:text-zinc-100"
+                title="Dismiss performance notice"
+                aria-label="Dismiss performance notice"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4">
           {/* Empty states are first-class (docs/design-principles.md) */}
           {runtime.state === "stopped" && messages.length === 0 && !generating ? (
@@ -368,17 +492,26 @@ export function Chat({
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-card text-accent-primary">
                 <Boxes size={26} />
               </div>
-              <h2 className="text-lg font-medium">Choose a model to start chatting</h2>
+              <h2 className="text-lg font-medium">Omnira needs a local GGUF model before chat can begin</h2>
               <p className="max-w-sm text-sm text-brand-textMuted">
-                Omnira runs AI models from your own computer. Pick a model file
-                you already have, and everything stays private.
+                All inference runs completely offline and privately on your computer.
               </p>
               <button
                 onClick={onGoToModels}
                 className="mt-2 rounded-lg bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-primary/90"
               >
-                Go to Models
+                Choose a model
               </button>
+            </div>
+          ) : runtime.state === "starting" && messages.length === 0 && !generating ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-card text-accent-warning animate-pulse">
+                <Boxes size={26} />
+              </div>
+              <h2 className="text-lg font-medium">Starting local model...</h2>
+              <p className="max-w-sm text-sm text-brand-textMuted">
+                This can take up to a minute depending on your computer's performance and the model's size.
+              </p>
             </div>
           ) : messages.length === 0 && !generating ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
@@ -446,10 +579,12 @@ export function Chat({
             {generating ? (
               <button
                 onClick={stopGeneration}
-                className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent-danger/90 text-white hover:bg-accent-danger"
+                className="flex h-11 items-center gap-2 rounded-xl bg-accent-danger px-4 font-medium text-white hover:bg-accent-danger/90 transition-colors"
                 title="Stop generating"
+                aria-label="Stop generating"
               >
-                <Square size={16} />
+                <Square size={14} fill="currentColor" />
+                <span className="text-sm">Stop</span>
               </button>
             ) : (
               <button
