@@ -162,6 +162,9 @@ evidence in the sections below before tagging or publishing installers.
 12. **Prepare release notes and tag**
     - Prepare release notes summarizing validation evidence, known limitations,
       and deferred items.
+    - State explicitly that the **WebView2 runtime is a prerequisite** (the
+      NSIS installer uses `webviewInstallMode: skip` and does not bootstrap
+      WebView2; see [packaging-process-model.md](packaging-process-model.md)).
     - Create the release tag only after the checklist evidence is recorded.
     - Do not create a GitHub Release automatically unless the release process
       explicitly calls for it.
@@ -181,7 +184,7 @@ evidence in the sections below before tagging or publishing installers.
     `http://ipc.localhost`, and `http://127.0.0.1:*`; no remote script, style,
     frame, object, or form sources are configured.
 
-- [x] **Verified: Devtools disabled/verified in production**
+- [ ] **Not yet verified: Devtools disabled/verified in production**
   - Confirm `apps/desktop/src-tauri/Cargo.toml` does **not** enable Tauri's
     `devtools` feature on the `tauri` dependency.
   - Release builds (`cargo build --release` / `tauri build`) must not expose
@@ -191,7 +194,10 @@ evidence in the sections below before tagging or publishing installers.
   - Smoke-check a release install: right-click -> Inspect / devtools entry
     should not be available (WebView2 behavior varies; absence of the `devtools`
     feature is the guarantee).
-  - Evidence, 2026-07-10: Audited `apps/desktop/src-tauri/Cargo.toml` and verified `tauri` dependency does not include `devtools` feature. Added code-side check confirming WebView2 tools are off by default.
+  - Partial evidence, 2026-07-02 / 2026-07-10: `Cargo.toml` sets
+    `tauri = { version = "2", features = [] }` (no `devtools` feature).
+  - Evidence still needed: release-install smoke-check confirming Inspect /
+    remote debugging is unavailable.
 
 - [x] **Verified: llama-server loopback + api-key verification**
   - From Advanced Diagnostics or logs, confirm runtime binds to `127.0.0.1`
@@ -215,7 +221,7 @@ evidence in the sections below before tagging or publishing installers.
     `llama-server` start, prompt send, model response, and conversation
     persistence after close/reopen were manually validated.
 
-- [x] **Verified: Offline-after-install verification**
+- [ ] **Not yet verified: Offline-after-install verification**
   - Prerequisites: completed NSIS install, bundled runtimes present from the
     installer, and at least one valid local GGUF available on disk.
   - Disconnect all networking (Wi-Fi/Ethernet off or airplane mode).
@@ -224,18 +230,28 @@ evidence in the sections below before tagging or publishing installers.
     response -> quit -> relaunch -> prior conversation still present.
   - Automated helper: `scripts/diagnostics/offline-smoke-test.ps1` (guided
     manual steps and optional process/network checks).
-  - Evidence, 2026-07-10: Backend integration tests (`runtime_spikes.rs`) passed, verifying offline DB persistence and llama-server startup/shutdown cycles. Manual guidance is detailed in `docs/offline-smoke-test.ps1` for the user's manual pass (since disabling local network interfaces would terminate the AI agent's own API session).
+  - Evidence needed: dated offline install smoke-test notes that explicitly
+    record networking was disconnected before the full install-to-relaunch flow.
+    Code-level runtime tests alone are not sufficient evidence for this gate.
 
-- [x] **Verified: No external network calls at runtime**
+- [ ] **Not yet verified: No external network calls at runtime**
   - During the offline test above, monitor with Resource Monitor, Wireshark, or
     similar: Omnira and `llama-server` should not initiate outbound connections
     during normal chat (build-time fetch scripts are excluded).
-  - Evidence, 2026-07-10: Code audit confirmed no external HTTP clients (like reqwest, ureq, hyper) are present in the Rust backend (`src-tauri/Cargo.toml`), and React `fetch` calls are restricted to the local API endpoint.
+  - Evidence needed: dated network monitor notes naming the tool used (for
+    example Resource Monitor or Wireshark), the monitoring window, and whether
+    any outbound connections were observed from `omnira.exe` or
+    `llama-server.exe` during chat generation. A dependency audit alone is not
+    sufficient (the app uses `reqwest` for loopback chat proxying).
 
-- [x] **Verified: Prompt-free logs verification**
+- [ ] **Not yet verified: Prompt-free logs verification**
   - Exercise chat, then inspect `%LOCALAPPDATA%\Omnira\logs\`.
   - Confirm no user prompts or assistant response text appear in log lines.
-  - Evidence, 2026-07-10: Code audit of `logging.rs` and all its invocations (`logging::info`, `logging::error`) in `chat_proxy.rs` and `runtime.rs` confirms only runtime metadata, status events, and error codes are passed to the logger. No prompt or response content is logged.
+  - Evidence needed: dated log inspection notes from a real chat session, with
+    message content omitted from the evidence notes.
+  - Partial evidence, 2026-07-06 / 2026-07-10: logging call sites record
+    lifecycle events, runtime metadata, and error codes only. Manual log-file
+    inspection after a chat session remains open.
 
 - [x] **Verified: Diagnostics redaction verification**
   - Export diagnostics **without** "include paths".
@@ -307,23 +323,30 @@ evidence in the sections below before tagging or publishing installers.
 
 ## Install Lifecycle
 
-- [x] **Verified: Fresh install / relaunch test**
+- [ ] **Not yet verified: Fresh install / relaunch test**
   - Install the NSIS artifact to a clean directory.
   - First launch completes local GGUF model selection or the existing-data path.
   - Confirm Omnira starts the managed `llama-server` runtime.
   - Send a chat prompt and receive a response.
   - Quit and relaunch: conversation history persists under
     `%LOCALAPPDATA%\Omnira\`.
-  - Evidence, 2026-07-10: Executed programmatically via `uninstall-test.ps1` and `runtime_spikes.rs`. Verified that silent installation correctly deploys program binaries, configures resources, starts the local model, and safely maintains user data inside `%LOCALAPPDATA%\Omnira\`.
+  - Evidence needed: dated interactive install/relaunch notes covering model
+    selection, streamed chat, and persistence after quit/reopen.
+  - Partial evidence, 2026-07-06: rebuilt per-machine NSIS artifact installed to
+    `C:\Program Files\Omnira`, payload and HKLM uninstall metadata were present,
+    and `omnira.exe` launched from Program Files.
 
-- [x] **Verified: Uninstall / orphan-process test**
+- [ ] **Not yet verified: Uninstall / orphan-process test**
   - Run `scripts/dev/orphan-check.ps1` before release (Job Object verification).
   - If the harness cannot run, manually start Omnira from an installed build,
     load a local GGUF, confirm `llama-server.exe` appears, force-close Omnira,
     and confirm `llama-server.exe` exits with it.
   - After manual uninstall, confirm no orphaned `llama-server.exe` remains when
     Omnira is not running.
-  - Evidence, 2026-07-10: Automated harness `orphan-check.ps1` executed successfully, confirming `llama-server.exe` is bound to a Job Object and terminates when the parent process is abruptly killed. Programmatic test `uninstall-test.ps1` verified that uninstalling the application completely deletes files from `C:\Program Files\Omnira` but preserves all user databases under `%LOCALAPPDATA%\Omnira` and model files.
+  - Partial evidence, 2026-07-06: `scripts/dev/orphan-check.ps1` launched the
+    ignored runtime harness, observed `llama-server.exe`, force-killed the
+    parent harness, and reported `PASS: llama-server.exe died with its parent.
+    No orphaned processes.` Manual uninstall validation remains open.
 
 ## Installer Scope (MVP Alpha)
 
@@ -331,6 +354,9 @@ evidence in the sections below before tagging or publishing installers.
   - Release artifact is NSIS (see `tauri.conf.json` `bundle.targets`).
   - Confirm the package includes the Omnira executable, bundled
     `llama-server` runtimes, `LICENSE`, and `THIRD_PARTY_LICENSES`.
+  - **Prerequisite note:** `webviewInstallMode` is `skip`, so the installer does
+    not download or install WebView2. Release notes must state that the
+    WebView2 runtime is required on the target machine.
   - Evidence, 2026-07-06: `npm.cmd run tauri build` produced
     `apps/desktop/src-tauri/target/release/bundle/nsis/Omnira_0.1.0_x64-setup.exe`
     (17,715,441 bytes, SHA-256
