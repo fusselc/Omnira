@@ -271,5 +271,5 @@ pub fn diagnostics_export(
     state: State<AppState>,
     include_paths: bool,
 ) -> Result<String, AppError> {
-    diagnostics::export(&state.runtime, include_paths)
+    diagnostics::export(&state.runtime, include_paths, None)
 }

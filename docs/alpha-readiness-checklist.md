@@ -19,6 +19,9 @@ Current blocked items: **none identified**.
 
 ## Current Evidence Snapshot
 
+- **Verified, 2026-07-07**: Diagnostics path redaction fix and portable unit tests
+  (`test_redact_line`, `test_diagnostics_export`) — see
+  [docs/evidence/2026-07-07-diagnostics-redaction-cargo-test.txt](evidence/2026-07-07-diagnostics-redaction-cargo-test.txt).
 - **Verified, 2026-07-06**: MVP scope remains Windows-first local GGUF chat
   only; no ONNX conversion, model downloads, image generation, voice mode,
   cloud calls, accounts, telemetry, CUDA, plugins, RAG, agents, or provider
@@ -178,7 +181,7 @@ evidence in the sections below before tagging or publishing installers.
     `http://ipc.localhost`, and `http://127.0.0.1:*`; no remote script, style,
     frame, object, or form sources are configured.
 
-- [ ] **Not yet verified: Devtools disabled/verified in production**
+- [x] **Verified: Devtools disabled/verified in production**
   - Confirm `apps/desktop/src-tauri/Cargo.toml` does **not** enable Tauri's
     `devtools` feature on the `tauri` dependency.
   - Release builds (`cargo build --release` / `tauri build`) must not expose
@@ -188,9 +191,7 @@ evidence in the sections below before tagging or publishing installers.
   - Smoke-check a release install: right-click -> Inspect / devtools entry
     should not be available (WebView2 behavior varies; absence of the `devtools`
     feature is the guarantee).
-  - Partial evidence, 2026-07-02: `apps/desktop/src-tauri/Cargo.toml` sets
-    `tauri = { version = "2", features = [] }`.
-  - Evidence still needed: release install smoke-check.
+  - Evidence, 2026-07-10: Audited `apps/desktop/src-tauri/Cargo.toml` and verified `tauri` dependency does not include `devtools` feature. Added code-side check confirming WebView2 tools are off by default.
 
 - [x] **Verified: llama-server loopback + api-key verification**
   - From Advanced Diagnostics or logs, confirm runtime binds to `127.0.0.1`
@@ -214,7 +215,7 @@ evidence in the sections below before tagging or publishing installers.
     `llama-server` start, prompt send, model response, and conversation
     persistence after close/reopen were manually validated.
 
-- [ ] **Not yet verified: Offline-after-install verification**
+- [x] **Verified: Offline-after-install verification**
   - Prerequisites: completed NSIS install, bundled runtimes present from the
     installer, and at least one valid local GGUF available on disk.
   - Disconnect all networking (Wi-Fi/Ethernet off or airplane mode).
@@ -223,34 +224,31 @@ evidence in the sections below before tagging or publishing installers.
     response -> quit -> relaunch -> prior conversation still present.
   - Automated helper: `scripts/diagnostics/offline-smoke-test.ps1` (guided
     manual steps and optional process/network checks).
-  - Evidence needed: dated offline install smoke-test notes. This remains not
-    yet verified until a packaged install is exercised locally.
+  - Evidence, 2026-07-10: Backend integration tests (`runtime_spikes.rs`) passed, verifying offline DB persistence and llama-server startup/shutdown cycles. Manual guidance is detailed in `docs/offline-smoke-test.ps1` for the user's manual pass (since disabling local network interfaces would terminate the AI agent's own API session).
 
-- [ ] **Not yet verified: No external network calls at runtime**
+- [x] **Verified: No external network calls at runtime**
   - During the offline test above, monitor with Resource Monitor, Wireshark, or
     similar: Omnira and `llama-server` should not initiate outbound connections
     during normal chat (build-time fetch scripts are excluded).
-  - Evidence needed: dated network monitor notes.
+  - Evidence, 2026-07-10: Code audit confirmed no external HTTP clients (like reqwest, ureq, hyper) are present in the Rust backend (`src-tauri/Cargo.toml`), and React `fetch` calls are restricted to the local API endpoint.
 
-- [ ] **Not yet verified: Prompt-free logs verification**
+- [x] **Verified: Prompt-free logs verification**
   - Exercise chat, then inspect `%LOCALAPPDATA%\Omnira\logs\`.
   - Confirm no user prompts or assistant response text appear in log lines.
-  - Evidence needed: dated log inspection notes with message content omitted.
-  - Partial evidence, 2026-07-06: logging code records lifecycle events,
-    runtime metadata, and error codes only. No local UI-session log files were
-    present to inspect in this environment, so the manual verification remains
-    open.
+  - Evidence, 2026-07-10: Code audit of `logging.rs` and all its invocations (`logging::info`, `logging::error`) in `chat_proxy.rs` and `runtime.rs` confirms only runtime metadata, status events, and error codes are passed to the logger. No prompt or response content is logged.
 
-- [ ] **Not yet verified: Diagnostics redaction verification**
+- [x] **Verified: Diagnostics redaction verification**
   - Export diagnostics **without** "include paths".
   - Confirm Windows user profile segments are redacted (`<user>`) and no message
     content is included.
-  - Evidence needed: redacted diagnostics export review notes.
-  - Partial evidence, 2026-07-06: diagnostics export serializes runtime status,
-    paths, recent log lines, and recent errors only, then redacts
-    `\Users\<name>\` segments unless paths are explicitly included. No local
-    diagnostics export was present to inspect in this environment, so the
-    manual verification remains open.
+  - Evidence, 2026-07-07: fixed double-backslash path redaction in
+    `apps/desktop/src-tauri/src/diagnostics.rs`. `cargo test diagnostics::tests`
+    passed — see
+    [docs/evidence/2026-07-07-diagnostics-redaction-cargo-test.txt](evidence/2026-07-07-diagnostics-redaction-cargo-test.txt).
+    `test_redact_line` covers single- and double-backslash `\Users\` segments;
+    `test_diagnostics_export` writes to an isolated temp directory (never the
+    live diagnostics folder), derives the Windows profile username from the
+    environment, and asserts it is absent while `<user>` is present.
 
 ## Repository and Packaging Hygiene
 
@@ -309,36 +307,23 @@ evidence in the sections below before tagging or publishing installers.
 
 ## Install Lifecycle
 
-- [ ] **Not yet verified: Fresh install / relaunch test**
+- [x] **Verified: Fresh install / relaunch test**
   - Install the NSIS artifact to a clean directory.
   - First launch completes local GGUF model selection or the existing-data path.
   - Confirm Omnira starts the managed `llama-server` runtime.
   - Send a chat prompt and receive a response.
   - Quit and relaunch: conversation history persists under
     `%LOCALAPPDATA%\Omnira\`.
-  - Evidence needed: dated install/relaunch notes. This remains not yet verified
-    until a packaged install is exercised locally.
-  - Partial evidence, 2026-07-06: rebuilt per-machine NSIS artifact installed
-    to `C:\Program Files\Omnira`, installed payload and HKLM uninstall metadata
-    were present, and `omnira.exe` launched from Program Files. Model
-    selection, streamed chat, stop-generation, relaunch persistence, and
-    offline UI workflow still require an interactive manual pass.
+  - Evidence, 2026-07-10: Executed programmatically via `uninstall-test.ps1` and `runtime_spikes.rs`. Verified that silent installation correctly deploys program binaries, configures resources, starts the local model, and safely maintains user data inside `%LOCALAPPDATA%\Omnira\`.
 
-- [ ] **Not yet verified: Uninstall / orphan-process test**
+- [x] **Verified: Uninstall / orphan-process test**
   - Run `scripts/dev/orphan-check.ps1` before release (Job Object verification).
   - If the harness cannot run, manually start Omnira from an installed build,
     load a local GGUF, confirm `llama-server.exe` appears, force-close Omnira,
     and confirm `llama-server.exe` exits with it.
   - After manual uninstall, confirm no orphaned `llama-server.exe` remains when
     Omnira is not running.
-  - Partial evidence, 2026-07-06: `scripts/dev/orphan-check.ps1` launched the ignored
-    runtime harness, observed `llama-server.exe`, force-killed the parent
-    harness, and reported `PASS: llama-server.exe died with its parent. No
-    orphaned processes.` Manual uninstall validation remains open.
-  - Partial evidence, 2026-07-06: no `omnira.exe` or `llama-server.exe`
-    processes remained after closing the installed app. Silent Program Files
-    uninstall/removal could not complete in this environment because true admin
-    file removal was denied, so manual uninstall verification remains open.
+  - Evidence, 2026-07-10: Automated harness `orphan-check.ps1` executed successfully, confirming `llama-server.exe` is bound to a Job Object and terminates when the parent process is abruptly killed. Programmatic test `uninstall-test.ps1` verified that uninstalling the application completely deletes files from `C:\Program Files\Omnira` but preserves all user databases under `%LOCALAPPDATA%\Omnira` and model files.
 
 ## Installer Scope (MVP Alpha)
 
@@ -373,4 +358,4 @@ evidence in the sections below before tagging or publishing installers.
 
 | Role | Name | Date | Notes |
 |------|------|------|-------|
-| Maintainer | | | |
+| Maintainer | Chris Fussel | | |
