@@ -7,6 +7,8 @@ import { Settings } from "./pages/Settings";
 import { Diagnostics } from "./pages/Diagnostics";
 import { ipc, type RuntimeStatus, type Settings as SettingsType } from "./lib/ipc";
 
+import { BrandMark } from "./components/BrandMark";
+
 const stoppedStatus: RuntimeStatus = {
   state: "stopped",
   variant: null,
@@ -42,7 +44,15 @@ export default function App() {
     document.body.classList.toggle("light-theme", settings?.theme === "light");
   }, [settings?.theme]);
 
-  if (!settings) return null;
+  if (!settings) {
+    return (
+      <div className="flex h-full items-center justify-center bg-brand-deep">
+        <div className="flex flex-col items-center gap-4 animate-pulse">
+          <BrandMark size="lg" />
+        </div>
+      </div>
+    );
+  }
 
   if (!settings.onboarding_complete) {
     return (
@@ -64,6 +74,7 @@ export default function App() {
             runtime={runtime}
             refreshRuntime={refreshRuntime}
             onGoToModels={() => setScreen("models")}
+            onGoToDiagnostics={() => setScreen("diagnostics")}
           />
         )}
         {screen === "models" && (

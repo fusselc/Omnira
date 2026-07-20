@@ -1,4 +1,5 @@
 import { MessageSquare, Boxes, Settings as SettingsIcon, Activity } from "lucide-react";
+import { BrandMark } from "./BrandMark";
 
 export type Screen = "chat" | "models" | "settings" | "diagnostics";
 
@@ -19,9 +20,7 @@ export function Sidebar({
   return (
     <nav className="flex w-56 shrink-0 flex-col border-r border-brand-border bg-brand-card">
       <div className="flex items-center gap-2 px-5 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-primary/20 text-accent-primary font-bold">
-          O
-        </div>
+        <BrandMark size="sm" />
         <span className="text-lg font-semibold tracking-tight">Omnira</span>
       </div>
       <div className="flex flex-1 flex-col gap-1 px-3">

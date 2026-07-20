@@ -61,9 +61,14 @@ Dev mode uses the same script, or a user-supplied runtime path via Settings.
 
 - Tauri bundler producing an **NSIS installer** for MVP alpha.
   **MSI is deferred** until after alpha; NSIS is sufficient for early releases.
+- NSIS installs per-machine under `Program Files\Omnira`; runtime/user data
+  remains separate under `%LOCALAPPDATA%\Omnira\`.
 - The installer includes: the Omnira executable, both llama-server variants and
   their DLLs, `THIRD_PARTY_LICENSES`, and LICENSE.
-- No network access is required at install time or first run.
+- No network access is required at install time or first run. The installer
+  uses `webviewInstallMode: skip` and does not download WebView2. **Release
+  notes must state that the WebView2 runtime is a prerequisite**; alpha targets
+  current Windows systems where WebView2 is already present.
 - Uninstall removes the application; user data under `%LOCALAPPDATA%\Omnira\`
   is preserved unless the user opts to remove it.
 - The repeatable alpha validation sequence lives in

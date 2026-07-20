@@ -9,13 +9,22 @@ fn temp_db() -> (Storage, std::path::PathBuf) {
     (Storage::open_at(&path).unwrap(), path)
 }
 
+fn write_minimal_gguf(path: &std::path::Path) {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&0x4655_4747u32.to_le_bytes()); // GGUF
+    bytes.extend_from_slice(&3u32.to_le_bytes()); // version
+    bytes.extend_from_slice(&0u64.to_le_bytes()); // tensor count
+    bytes.extend_from_slice(&0u64.to_le_bytes()); // metadata kv count
+    std::fs::write(path, bytes).unwrap();
+}
+
 #[test]
-fn model_registry_lifecycle_and_missing_file_detection() {
+fn model_registry_lifecycle_and_file_status_detection() {
     let (db, dbpath) = temp_db();
 
     // Register a file that exists.
     let real = std::env::temp_dir().join("omnira-test-model.gguf");
-    std::fs::write(&real, b"placeholder").unwrap();
+    write_minimal_gguf(&real);
     let m = db
         .add_model("Test Model", &real.display().to_string(), 11, Some(4096))
         .unwrap();
@@ -33,6 +42,12 @@ fn model_registry_lifecycle_and_missing_file_detection() {
     std::fs::remove_file(&real).unwrap();
     let listed = db.list_models().unwrap();
     assert_eq!(listed[0].status, ModelStatus::Missing);
+
+    // Existing-but-corrupt files are surfaced as Invalid, not ready.
+    std::fs::write(&real, b"not a gguf").unwrap();
+    let listed = db.list_models().unwrap();
+    assert_eq!(listed[0].status, ModelStatus::Invalid);
+    std::fs::remove_file(&real).unwrap();
 
     // Removing the entry never requires the file to exist.
     db.remove_model(&m.id).unwrap();

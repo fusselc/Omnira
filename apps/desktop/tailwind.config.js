@@ -9,12 +9,12 @@ export default {
     extend: {
       colors: {
         brand: {
-          deep: '#030303',
-          card: '#09090b',
-          hover: '#121214',
-          border: '#18181b',
-          textMuted: '#a1a1aa',
-          glow: 'rgba(99, 102, 241, 0.15)',
+          deep: 'var(--color-brand-deep)',
+          card: 'var(--color-brand-card)',
+          hover: 'var(--color-brand-hover)',
+          border: 'var(--color-brand-border)',
+          textMuted: 'var(--color-brand-text-muted)',
+          glow: 'var(--color-brand-glow)',
         },
         accent: {
           primary: '#6366f1',    // Indigo for core actions
@@ -25,8 +25,8 @@ export default {
         }
       },
       fontFamily: {
-        sans: ['Inter', 'Outfit', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+        sans: ['Inter', 'Outfit', '"Segoe UI Variable Text"', '"Segoe UI"', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['"JetBrains Mono"', '"Fira Code"', 'Consolas', '"Courier New"', 'monospace'],
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',

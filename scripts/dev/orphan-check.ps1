@@ -29,11 +29,18 @@ Write-Host "Starting harness (spawns supervised llama-server, then sleeps)..."
 Write-Host "Prerequisites: fetched runtimes and the ignored runtime test environment must be available."
 $logOut = Join-Path $env:TEMP "omnira-orphan-check.out.log"
 $logErr = Join-Path $env:TEMP "omnira-orphan-check.err.log"
-$proc = Start-Process -FilePath "cargo" -ArgumentList @(
-    "test", "--test", "runtime_spikes", "--",
-    "--ignored", "orphan_check_holds_runtime_for_kill", "--nocapture"
-) -WorkingDirectory $srcTauri -PassThru -WindowStyle Hidden `
-    -RedirectStandardOutput $logOut -RedirectStandardError $logErr
+$psi = [System.Diagnostics.ProcessStartInfo]::new()
+$psi.FileName = "cargo"
+$psi.WorkingDirectory = $srcTauri
+$psi.UseShellExecute = $false
+$psi.CreateNoWindow = $true
+$psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError = $true
+$psi.Arguments = "test --test runtime_spikes -- --ignored orphan_check_holds_runtime_for_kill --nocapture"
+
+$proc = [System.Diagnostics.Process]::new()
+$proc.StartInfo = $psi
+$null = $proc.Start()
 
 # Wait for a NEW llama-server.exe to appear (runtime is healthy once spawned
 # and past health gating; allow generous compile+load time).
@@ -42,6 +49,8 @@ $newServer = $null
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 2
     if ($proc.HasExited) {
+        $proc.StandardOutput.ReadToEnd() | Set-Content -Path $logOut
+        $proc.StandardError.ReadToEnd() | Set-Content -Path $logErr
         Get-Content $logOut, $logErr -ErrorAction SilentlyContinue | Select-Object -Last 20
         Write-Error "Harness exited early."
         exit 1
@@ -57,9 +66,18 @@ Write-Host "llama-server.exe running with PID $newServer under harness PID $($pr
 Start-Sleep -Seconds 3
 Write-Host "Force-killing harness process tree root (taskkill /F, no /T)..."
 taskkill /F /PID $proc.Id | Out-Null
+if ($LASTEXITCODE -ne 0 -and -not $proc.HasExited) {
+    Write-Warning "taskkill failed with exit code $LASTEXITCODE; falling back to Process.Kill()."
+    $proc.Kill()
+}
 
-Start-Sleep -Seconds 3
-$orphan = Get-Process -Id $newServer -ErrorAction SilentlyContinue
+$deadline = (Get-Date).AddSeconds(15)
+$orphan = $null
+do {
+    Start-Sleep -Seconds 1
+    $orphan = Get-Process -Id $newServer -ErrorAction SilentlyContinue
+} while ($orphan -and (Get-Date) -lt $deadline)
+
 if ($orphan) {
     Write-Error "FAIL: llama-server.exe (PID $newServer) survived the parent kill. Job Object is not working."
     Stop-Process -Id $newServer -Force
