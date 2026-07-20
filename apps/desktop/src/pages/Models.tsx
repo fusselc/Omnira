@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { FilePlus, Play, Trash2, AlertTriangle } from "lucide-react";
+import { FilePlus, Play, Trash2, AlertTriangle, Pencil } from "lucide-react";
 import { pickGgufFile } from "../lib/dialog";
 import {
   ipc,
@@ -21,6 +21,8 @@ export function Models({
   const [models, setModels] = useState<ModelEntry[]>([]);
   const [error, setError] = useState<AppError | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
 
   const reload = useCallback(async () => {
     setModels(await ipc.listModels());
@@ -60,6 +62,38 @@ export function Models({
     setError(null);
     await ipc.removeModel(id);
     await reload();
+  };
+
+  const startRename = (model: ModelEntry, e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
+    if (busy) return;
+    setEditingId(model.id);
+    setEditName(model.name);
+  };
+
+  const cancelRename = () => {
+    setEditingId(null);
+    setEditName("");
+  };
+
+  const saveRename = async (id: string) => {
+    const trimmed = editName.trim();
+    if (!trimmed) {
+      cancelRename();
+      return;
+    }
+    const original = models.find((m) => m.id === id)?.name;
+    if (trimmed === original) {
+      cancelRename();
+      return;
+    }
+    try {
+      await ipc.renameModel(id, trimmed);
+      await reload();
+      cancelRename();
+    } catch (e) {
+      setError(toAppError(e));
+    }
   };
 
   return (
@@ -107,10 +141,40 @@ export function Models({
               <li
                 key={m.id}
                 className="flex items-center gap-4 rounded-xl border border-brand-border bg-brand-card px-5 py-4"
+                onKeyDown={(e) => {
+                  if (e.key === "F2" && editingId !== m.id) startRename(m, e);
+                }}
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="truncate font-medium">{m.name}</h3>
+                    {editingId === m.id ? (
+                      <input
+                        autoFocus
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        onBlur={() => void saveRename(m.id)}
+                        onKeyDown={(e) => {
+                          e.stopPropagation();
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void saveRename(m.id);
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            cancelRename();
+                          }
+                        }}
+                        className="min-w-0 flex-1 rounded border border-brand-border bg-brand-deep px-2 py-1 text-sm font-medium outline-none focus:border-accent-primary"
+                        aria-label="Model display name"
+                      />
+                    ) : (
+                      <h3
+                        className="truncate font-medium"
+                        onDoubleClick={(e) => startRename(m, e)}
+                        title="Double-click or press F2 to rename"
+                      >
+                        {m.name}
+                      </h3>
+                    )}
                     {active && (
                       <span className="rounded-full bg-accent-success/15 px-2 py-0.5 text-[11px] text-accent-success">
                         In use
@@ -137,6 +201,17 @@ export function Models({
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  {editingId !== m.id && (
+                    <button
+                      onClick={(e) => startRename(m, e)}
+                      disabled={busy}
+                      className="rounded-lg border border-brand-border p-2 text-brand-textMuted hover:bg-brand-hover hover:text-zinc-100 disabled:opacity-40"
+                      title="Rename display name (file path unchanged)"
+                      aria-label="Rename model"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
                   <button
                     onClick={() => void useModel(m.id)}
                     disabled={m.status !== "ok" || busy || runtime.state === "starting"}
@@ -161,7 +236,7 @@ export function Models({
 
       <p className="pb-2 text-center text-xs text-zinc-600">
         Removing a model from Omnira only removes it from this list. Your model
-        file stays exactly where it is.
+        file stays exactly where it is. Renaming changes the display name only.
       </p>
     </div>
   );
