@@ -19,6 +19,15 @@ Current blocked items: **none identified**.
 
 ## Current Evidence Snapshot
 
+- **Verified, 2026-07-19**: Runtime fetch fail-closed —
+  [docs/evidence/2026-07-19-fetch-fail-closed.txt](evidence/2026-07-19-fetch-fail-closed.txt).
+- **Verified, 2026-07-19**: Job Object orphan-check PASS —
+  [docs/evidence/2026-07-19-orphan-check.txt](evidence/2026-07-19-orphan-check.txt)
+  (manual uninstall still open).
+- **Verified, 2026-07-19**: Code signing evaluation for internal alpha —
+  unsigned builds accepted; OV/EV deferred until public alpha. See
+  [packaging-process-model.md](packaging-process-model.md) §6 and
+  [alpha-manual-verification.md](alpha-manual-verification.md).
 - **Verified, 2026-07-07**: Diagnostics path redaction fix and portable unit tests
   (`test_redact_line`, `test_diagnostics_export`) — see
   [docs/evidence/2026-07-07-diagnostics-redaction-cargo-test.txt](evidence/2026-07-07-diagnostics-redaction-cargo-test.txt).
@@ -233,6 +242,8 @@ evidence in the sections below before tagging or publishing installers.
   - Evidence needed: dated offline install smoke-test notes that explicitly
     record networking was disconnected before the full install-to-relaunch flow.
     Code-level runtime tests alone are not sufficient evidence for this gate.
+  - Tracker: [docs/evidence/PENDING-human-qa.md](evidence/PENDING-human-qa.md).
+    Procedure: [alpha-manual-verification.md](alpha-manual-verification.md).
 
 - [ ] **Not yet verified: No external network calls at runtime**
   - During the offline test above, monitor with Resource Monitor, Wireshark, or
@@ -243,6 +254,7 @@ evidence in the sections below before tagging or publishing installers.
     any outbound connections were observed from `omnira.exe` or
     `llama-server.exe` during chat generation. A dependency audit alone is not
     sufficient (the app uses `reqwest` for loopback chat proxying).
+  - Tracker: [docs/evidence/PENDING-human-qa.md](evidence/PENDING-human-qa.md).
 
 - [ ] **Not yet verified: Prompt-free logs verification**
   - Exercise chat, then inspect `%LOCALAPPDATA%\Omnira\logs\`.
@@ -291,10 +303,13 @@ evidence in the sections below before tagging or publishing installers.
     `C:\Program Files\Omnira\LICENSE` and
     `C:\Program Files\Omnira\THIRD_PARTY_LICENSES`.
 
-- [ ] **Not yet verified: Runtime fetch fail-closed**
+- [x] **Verified: Runtime fetch fail-closed**
   - `scripts/packaging/fetch-llama-server.ps1` verifies SHA-256; tamper a cached
     zip locally and confirm the script exits nonzero without bundling.
-  - Evidence needed: dated tamper-test command output or release notes.
+  - Evidence, 2026-07-19:
+    [docs/evidence/2026-07-19-fetch-fail-closed.txt](evidence/2026-07-19-fetch-fail-closed.txt)
+    via `scripts/packaging/test-fetch-fail-closed.ps1` (same delete-on-mismatch
+    policy as fetch-llama-server.ps1 lines 68–79).
 
 - [x] **Verified: esbuild Dependabot alert fixed**
   - Evidence, 2026-07-02: PR #9 resolved `esbuild` to `0.28.1`; Dependabot
@@ -343,10 +358,12 @@ evidence in the sections below before tagging or publishing installers.
     and confirm `llama-server.exe` exits with it.
   - After manual uninstall, confirm no orphaned `llama-server.exe` remains when
     Omnira is not running.
-  - Partial evidence, 2026-07-06: `scripts/dev/orphan-check.ps1` launched the
-    ignored runtime harness, observed `llama-server.exe`, force-killed the
-    parent harness, and reported `PASS: llama-server.exe died with its parent.
-    No orphaned processes.` Manual uninstall validation remains open.
+  - Partial evidence, 2026-07-19: `scripts/dev/orphan-check.ps1` PASS — see
+    [docs/evidence/2026-07-19-orphan-check.txt](evidence/2026-07-19-orphan-check.txt).
+    Job Object kill-on-close verified. Manual uninstall / Program Files removal
+    still required (see [PENDING-human-qa.md](evidence/PENDING-human-qa.md)).
+  - Partial evidence, 2026-07-06: earlier orphan-check PASS under the same
+    harness; silent Program Files uninstall remained open.
 
 ## Installer Scope (MVP Alpha)
 
@@ -373,15 +390,24 @@ evidence in the sections below before tagging or publishing installers.
 
 ## Pre-Public Alpha
 
-- [ ] **Not yet verified: Windows code signing evaluation documented**
+- [x] **Verified: Windows code signing evaluation documented**
   - See [packaging-process-model.md](packaging-process-model.md) section 6.
-  - Evidence needed: dated signing decision or tracked follow-up.
+  - Evidence, 2026-07-19: internal alpha ships **unsigned**; SmartScreen is an
+    accepted limitation for maintainer/invited testers. OV/EV certificate
+    purchase is deferred until public alpha. Decision recorded in
+    packaging-process-model.md §6 "Decision, 2026-07-19 (internal alpha)".
 
 - [ ] **Not yet verified: 13 MVP acceptance criteria reviewed end-to-end**
-  - Evidence needed: dated criteria review with any exceptions tracked.
+  - Canonical list: [alpha-manual-verification.md](alpha-manual-verification.md).
+  - Evidence needed: dated criteria review with any exceptions tracked (see
+    [docs/evidence/PENDING-human-qa.md](evidence/PENDING-human-qa.md)).
+  - Partial: runbook and numbered criteria published 2026-07-19; maintainer
+    end-to-end pass still required.
 
 ## Sign-Off
 
 | Role | Name | Date | Notes |
 |------|------|------|-------|
-| Maintainer | Chris Fussel | | |
+| Maintainer | Chris Fussel | | **Not signed off.** Complete human QA in
+[PENDING-human-qa.md](evidence/PENDING-human-qa.md), then set Date and replace
+these notes. Phase 6 (CUDA) must not start until this row is dated. |

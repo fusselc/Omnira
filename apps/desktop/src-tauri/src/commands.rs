@@ -75,6 +75,13 @@ pub fn remove_model(state: State<AppState>, id: String) -> Result<(), AppError> 
     state.storage.remove_model(&id)
 }
 
+/// Renames the registry display name only; never renames the file on disk.
+#[tauri::command]
+pub fn rename_model(state: State<AppState>, id: String, name: String) -> Result<(), AppError> {
+    logging::info("model.rename", "display name only");
+    state.storage.rename_model(&id, &name)
+}
+
 // ---------------------------------------------------------------------------
 // Conversations and messages
 // ---------------------------------------------------------------------------

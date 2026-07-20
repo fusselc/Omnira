@@ -34,13 +34,14 @@ Use this checklist to perform final manual QA sweeps before tagging and publishi
 - [ ] Click "View details" on the notice and verify it redirects you to the Advanced Diagnostics panel.
 - [ ] Confirm that the notice does not show up when Vulkan/GPU acceleration starts successfully.
 
-## 5. Conversation Rename and Delete Confirmation
+## 5. Conversation Rename, Model Rename, and Delete Confirmation
 - [ ] Create a new conversation or send a first message.
 - [ ] Verify that double-clicking the conversation title in the sidebar or clicking the Pencil icon triggers rename mode.
 - [ ] Select the conversation and press `F2` to verify it triggers rename mode.
 - [ ] Type a new name and press `Enter` (or click away to trigger Blur) to save.
 - [ ] Verify that pressing `Escape` correctly cancels the edit without changing the title.
 - [ ] Attempt to save a blank/whitespace-only title and verify that it cancels/reverts to the original title rather than saving a blank name.
+- [ ] On the Models screen, rename a model via Pencil, double-click, or `F2`; confirm the display name changes and the file path is unchanged.
 - [ ] Hover over a conversation item, click the Trash icon, and verify that a warning dialog pops up confirming the deletion.
 - [ ] Cancel the deletion and confirm the data is preserved; approve the deletion and verify it is permanently wiped.
 

@@ -71,6 +71,11 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
       if (idx >= 0) models.splice(idx, 1);
       return;
     }
+    case "rename_model": {
+      const m = models.find((m) => m.id === args!.id);
+      if (m) m.name = (args!.name as string).trim();
+      return;
+    }
 
     case "list_conversations":
       return [...conversations].sort((a, b) => b.updated_at.localeCompare(a.updated_at));

@@ -146,6 +146,8 @@ export const ipc = {
   listModels: () => invoke<ModelEntry[]>("list_models"),
   addModel: (path: string) => invoke<ModelEntry>("add_model", { path }),
   removeModel: (id: string) => invoke<void>("remove_model", { id }),
+  renameModel: (id: string, name: string) =>
+    invoke<void>("rename_model", { id, name }),
 
   // Conversations
   listConversations: () => invoke<Conversation[]>("list_conversations"),

@@ -95,6 +95,19 @@ workflow. Unsigned installers trigger SmartScreen warnings. Code signing should
 be evaluated before public alpha, but it does not block internal alpha testing
 unless maintainers explicitly make it a release gate.
 
+### Decision, 2026-07-19 (internal alpha)
+
+- **Internal / private alpha:** ship **unsigned** NSIS builds. SmartScreen
+  warnings are an accepted limitation for maintainer and invited-tester
+  installs. Do not purchase EV/OV certificates solely to unblock internal
+  validation.
+- **Public alpha / wider distribution:** revisit purchase of an OV or EV code
+  signing certificate and CI signing before publishing installers for general
+  download. Until then, release notes must state that the installer is unsigned
+  and may show SmartScreen prompts.
+- Evidence: this dated decision in packaging-process-model.md; checklist item
+  marked verified for the *evaluation* gate (purchase deferred).
+
 ## 7. Orchestrator implementation
 
 The MVP orchestrator is the **Rust core inside Tauri**, not a separate service.
