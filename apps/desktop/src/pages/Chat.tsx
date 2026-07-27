@@ -37,6 +37,7 @@ export function Chat({
   const streamRef = useRef<StreamHandle | null>(null);
   const streamBufferRef = useRef("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const restoredRef = useRef(false);
 
   // Renaming & Fallback states
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -71,7 +72,9 @@ export function Chat({
     runtime.model_id === dropdownModelId;
 
   const loadConversations = useCallback(async () => {
-    setConversations(await ipc.listConversations());
+    const list = await ipc.listConversations();
+    setConversations(list);
+    return list;
   }, []);
 
   const loadModels = useCallback(async () => {
@@ -79,9 +82,22 @@ export function Chat({
   }, []);
 
   useEffect(() => {
-    void loadConversations();
-    void loadModels();
+    void (async () => {
+      const [list] = await Promise.all([loadConversations(), loadModels()]);
+      if (restoredRef.current) return;
+      restoredRef.current = true;
+      const settings = await ipc.getSettings().catch(() => null);
+      const lastId = settings?.last_conversation_id;
+      if (lastId && list.some((c) => c.id === lastId)) setActiveId(lastId);
+    })();
   }, [loadConversations, loadModels]);
+
+  useEffect(() => {
+    // Only track selections the user made this session, so the initial null
+    // state cannot erase the thread we are about to restore.
+    if (!restoredRef.current) return;
+    void ipc.setLastConversation(activeId).catch(() => undefined);
+  }, [activeId]);
 
   useEffect(() => {
     if (!activeId) {

@@ -124,6 +124,10 @@ pub struct Settings {
     pub preferred_runtime_variant: Option<RuntimeVariant>,
     /// Whether the first-run flow has completed.
     pub onboarding_complete: bool,
+    /// Conversation reopened on the next launch. Defaulted so settings files
+    /// written by earlier builds still deserialize.
+    #[serde(default)]
+    pub last_conversation_id: Option<String>,
 }
 
 impl Default for Settings {
@@ -133,6 +137,7 @@ impl Default for Settings {
             runtime_path_override: None,
             preferred_runtime_variant: None,
             onboarding_complete: false,
+            last_conversation_id: None,
         }
     }
 }

@@ -22,6 +22,7 @@ let settings: Settings = {
   runtime_path_override: null,
   preferred_runtime_variant: null,
   onboarding_complete: false,
+  last_conversation_id: null,
 };
 
 const models: ModelEntry[] = [];
@@ -47,6 +48,9 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
       return settings;
     case "save_settings":
       settings = args!.settings as Settings;
+      return;
+    case "set_last_conversation":
+      settings = { ...settings, last_conversation_id: (args!.id as string) ?? null };
       return;
 
     case "list_models":
@@ -103,10 +107,14 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
     case "delete_conversation": {
       const idx = conversations.findIndex((c) => c.id === args!.id);
       if (idx >= 0) conversations.splice(idx, 1);
+      if (settings.last_conversation_id === args!.id) {
+        settings = { ...settings, last_conversation_id: null };
+      }
       return;
     }
     case "clear_conversations":
       conversations.length = 0;
+      settings = { ...settings, last_conversation_id: null };
       messages.length = 0;
       return;
 

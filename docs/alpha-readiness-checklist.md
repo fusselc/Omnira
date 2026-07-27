@@ -173,7 +173,8 @@ evidence in the sections below before tagging or publishing installers.
 
 12. **Prepare release notes and tag**
     - Prepare release notes summarizing validation evidence, known limitations,
-      and deferred items.
+      and deferred items. The 0.1.0 internal alpha notes are at
+      [release-notes-0.1.0-alpha.md](release-notes-0.1.0-alpha.md).
     - State explicitly that the **WebView2 runtime is a prerequisite** (the
       NSIS installer uses `webviewInstallMode: skip` and does not bootstrap
       WebView2; see [packaging-process-model.md](packaging-process-model.md)).

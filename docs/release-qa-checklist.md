@@ -49,6 +49,7 @@ Use this checklist to perform final manual QA sweeps before tagging and publishi
 - [ ] Close the application.
 - [ ] Launch the application again (offline).
 - [ ] Confirm that your settings, onboarding state, previously active conversation, and full message history are loaded and accessible.
+- [ ] Verify the conversation that was open before quitting is selected again on launch, and that deleting that conversation (or clearing all conversations) leaves Chat on the empty state after the next launch instead of a stale thread.
 
 ## 7. Normal Close and Forced-Close Orphan-Process Check
 - [ ] Load a model so `llama-server.exe` is running (verify it via Task Manager).

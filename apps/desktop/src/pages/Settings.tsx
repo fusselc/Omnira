@@ -22,10 +22,12 @@ export function Settings() {
 
   const update = async (patch: Partial<SettingsType>) => {
     if (!settings) return;
-    const next = { ...settings, ...patch };
-    setSettings(next);
+    setSettings({ ...settings, ...patch });
     try {
-      await ipc.saveSettings(next);
+      // Merge onto the stored copy so fields owned by other screens, such as the
+      // remembered conversation, survive edits made here.
+      const stored = await ipc.getSettings();
+      await ipc.saveSettings({ ...stored, ...patch });
     } catch (e) {
       setError(toAppError(e));
     }

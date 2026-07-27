@@ -47,6 +47,8 @@ SQLite database should not ride along with roaming profile sync.
 - Theme preference
 - Advanced runtime preferences (custom runtime path override, recorded working
   runtime variant)
+- Session continuity: the conversation id to reopen on next launch, cleared
+  automatically when that conversation is deleted
 - Feature flags
 
 ## 4. Logs
