@@ -83,6 +83,7 @@ runtime strategy live in [docs/roadmap.md](docs/roadmap.md) and
 - [Roadmap](docs/roadmap.md) -- MVP phases and post-MVP capabilities
 - [ChatProvider](docs/chat-provider.md) -- the MVP provider contract
 - [Packaging and process model](docs/packaging-process-model.md)
+- [Security policy](SECURITY.md) -- how to report vulnerabilities
 - [Local security boundary](docs/local-security-boundary.md)
 - [Data ownership and storage](docs/data-ownership-and-storage.md)
 - [Design principles](docs/design-principles.md)
