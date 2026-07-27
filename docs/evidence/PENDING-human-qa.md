@@ -1,11 +1,19 @@
 # PENDING: Human evidence — offline / network / install / logs / devtools
 
-These gates require a maintainer session on Windows. Fill by copying this file
-to dated names (e.g. `2026-07-19-offline-after-install.md`) after the run.
+These gates require a maintainer session on Windows.
 
-See [docs/alpha-manual-verification.md](../alpha-manual-verification.md).
+## Easiest way
 
-## Status
+In PowerShell from the repo root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\diagnostics\run-alpha-human-qa.ps1
+```
+
+That script asks simple y/n questions and writes dated files under `docs/evidence/`.
+When it finishes, tell the agent: **Human QA done — update the checklist**.
+
+## Status (until the helper is run)
 
 | Gate | Status | Evidence file (when done) |
 |------|--------|---------------------------|
