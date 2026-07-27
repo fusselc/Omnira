@@ -59,6 +59,11 @@ streaming response, stop button, "Running locally" indicator, friendly
 no-model empty state. A subtle notice appears when older messages were
 truncated from context.
 
+**Create:** local image prompt, size controls, generate action, and a gallery
+of generations stored under `%LOCALAPPDATA%\Omnira\generations\`. Requires a
+local diffusion worker binary when generating; fails closed without network
+calls when the worker is missing. See [image-provider.md](image-provider.md).
+
 **Models:** add/select local `.gguf`; friendly name, file path, file size,
 last used, status indicator; missing-file warning; "Remove from Omnira" action
 with copy making clear the file itself is not deleted.

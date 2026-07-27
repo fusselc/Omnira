@@ -9,7 +9,8 @@ use crate::errors::{AppError, ErrorCode};
 use crate::gguf;
 use crate::paths;
 use crate::types::{
-    Conversation, Message, MessageRole, MessageStatus, ModelEntry, ModelStatus,
+    Conversation, Generation, GenerationStatus, Message, MessageRole, MessageStatus, ModelEntry,
+    ModelStatus,
 };
 
 pub struct Storage {
@@ -46,6 +47,19 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation
     ON messages(conversation_id, created_at);
+
+CREATE TABLE IF NOT EXISTS generations (
+    id TEXT PRIMARY KEY,
+    prompt TEXT NOT NULL,
+    width INTEGER NOT NULL,
+    height INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('complete', 'failed')),
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_generations_created
+    ON generations(created_at DESC);
 ";
 
 fn now() -> String {
@@ -343,6 +357,79 @@ impl Storage {
                 })
             })?;
             rows.collect()
+        })
+    }
+
+    pub fn add_generation(
+        &self,
+        prompt: &str,
+        width: u32,
+        height: u32,
+        path: &str,
+        status: GenerationStatus,
+    ) -> Result<Generation, AppError> {
+        let status_s = match status {
+            GenerationStatus::Complete => "complete",
+            GenerationStatus::Failed => "failed",
+        };
+        let gen = Generation {
+            id: new_id(),
+            prompt: prompt.to_string(),
+            width,
+            height,
+            path: path.to_string(),
+            status,
+            created_at: now(),
+        };
+        self.with(|c| {
+            c.execute(
+                "INSERT INTO generations (id, prompt, width, height, path, status, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    gen.id,
+                    gen.prompt,
+                    gen.width,
+                    gen.height,
+                    gen.path,
+                    status_s,
+                    gen.created_at
+                ],
+            )?;
+            Ok(())
+        })?;
+        Ok(gen)
+    }
+
+    pub fn list_generations(&self) -> Result<Vec<Generation>, AppError> {
+        self.with(|c| {
+            let mut stmt = c.prepare(
+                "SELECT id, prompt, width, height, path, status, created_at
+                 FROM generations ORDER BY created_at DESC",
+            )?;
+            let rows = stmt.query_map([], |r| {
+                let status_s: String = r.get(5)?;
+                Ok(Generation {
+                    id: r.get(0)?,
+                    prompt: r.get(1)?,
+                    width: r.get(2)?,
+                    height: r.get(3)?,
+                    path: r.get(4)?,
+                    status: if status_s == "failed" {
+                        GenerationStatus::Failed
+                    } else {
+                        GenerationStatus::Complete
+                    },
+                    created_at: r.get(6)?,
+                })
+            })?;
+            rows.collect()
+        })
+    }
+
+    pub fn delete_generation(&self, id: &str) -> Result<(), AppError> {
+        self.with(|c| {
+            c.execute("DELETE FROM generations WHERE id = ?1", [id])?;
+            Ok(())
         })
     }
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Sidebar, type Screen } from "./components/Sidebar";
 import { FirstRun } from "./components/FirstRun";
 import { Chat } from "./pages/Chat";
+import { Create } from "./pages/Create";
 import { Models } from "./pages/Models";
 import { Settings } from "./pages/Settings";
 import { Diagnostics } from "./pages/Diagnostics";
@@ -77,6 +78,7 @@ export default function App() {
             onGoToDiagnostics={() => setScreen("diagnostics")}
           />
         )}
+        {screen === "create" && <Create />}
         {screen === "models" && (
           <Models runtime={runtime} refreshRuntime={refreshRuntime} />
         )}

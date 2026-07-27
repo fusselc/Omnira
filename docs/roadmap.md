@@ -67,19 +67,17 @@ See `docs/runtimes-and-routing.md` for the runtime strategy behind this order.
 
 | Phase | Focus | Runtime pillar | New UI (minimum) |
 |---|---|---|---|
-| 6 | CUDA llama.cpp for LLMs | High-performance GPU (LLM) | None (same Chat; faster path visible in Diagnostics) |
-| 7 | Image generation | CUDA/TensorRT (diffusion) or managed diffusion worker | Create (image) |
+| 6 | CUDA llama.cpp for LLMs | High-performance GPU (LLM) | None (same Chat; faster path visible in Diagnostics) — **implemented** |
+| 7 | Image generation | CUDA/TensorRT (diffusion) or managed diffusion worker | Create (image) — **UI + provider seam landed**; diffusion worker binary still optional |
 | 8 | Windows ML / ONNX | Windows-native (vision, audio, NPU) | Create (vision/audio tasks) |
 | 9 | Video generation | CUDA/TensorRT | Create (video) |
 | 10 | Agents, tool calling, RAG, memory | llama.cpp + embeddings | Memory/RAG, Agents screens |
 | 11 | Voice mode (ASR, TTS) | Windows ML / ONNX + optional CUDA | Voice screen |
 | 12 | Plugin / community provider ecosystem | All pillars | Provider registry, extensibility docs |
 
-CUDA for LLMs (Phase 6) is the **first** post-MVP runtime addition -- it is the
-single biggest expected performance gap for NVIDIA users on the MVP's Vulkan
-path. Hardware-aware routing (prefer NPU on Copilot+ PCs for ONNX, prefer CUDA
-on NVIDIA for heavy workloads, Vulkan/CPU fallback) is introduced incrementally
-starting Phase 6.
+CUDA for LLMs (Phase 6) is the **first** post-MVP runtime addition and is now
+implemented: NVIDIA machines prefer CUDA, then Vulkan, then CPU. Hardware-aware
+routing for ONNX/NPU continues incrementally in later phases.
 
 Other post-MVP capabilities, unscheduled: hardware detection UI, model download
 assistance, ComfyUI integration as a managed worker, local knowledge base,

@@ -72,6 +72,7 @@ pub struct Message {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeVariant {
+    Cuda,
     Vulkan,
     Cpu,
 }
@@ -90,9 +91,9 @@ pub enum RuntimeState {
 pub struct RuntimeStatus {
     pub state: RuntimeState,
     pub variant: Option<RuntimeVariant>,
-    /// Human label for Diagnostics only, e.g. "NVIDIA GPU (Vulkan)" or "CPU".
+    /// Human label for Diagnostics only, e.g. "NVIDIA GPU (CUDA)" or "CPU".
     pub accelerator_label: Option<String>,
-    /// Why the CPU fallback engaged, if it did. Diagnostics only.
+    /// Why a preferred accelerator was skipped, if fallback engaged. Diagnostics only.
     pub fallback_reason: Option<String>,
     pub model_id: Option<String>,
     pub port: Option<u16>,
@@ -140,6 +141,61 @@ impl Default for Settings {
             last_conversation_id: None,
         }
     }
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::Settings;
+
+    #[test]
+    fn last_conversation_id_round_trips() {
+        let mut s = Settings::default();
+        s.last_conversation_id = Some("abc-123".into());
+        let json = serde_json::to_string(&s).unwrap();
+        let back: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.last_conversation_id.as_deref(), Some("abc-123"));
+    }
+
+    #[test]
+    fn older_settings_json_defaults_last_conversation_id() {
+        let json = r#"{
+            "theme": "dark",
+            "runtime_path_override": null,
+            "preferred_runtime_variant": null,
+            "onboarding_complete": true
+        }"#;
+        let s: Settings = serde_json::from_str(json).unwrap();
+        assert!(s.onboarding_complete);
+        assert_eq!(s.last_conversation_id, None);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Image generations (Phase 7)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GenerationStatus {
+    Complete,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Generation {
+    pub id: String,
+    pub prompt: String,
+    pub width: u32,
+    pub height: u32,
+    pub path: String,
+    pub status: GenerationStatus,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageRuntimeStatus {
+    pub available: bool,
+    pub detail: String,
 }
 
 // ---------------------------------------------------------------------------

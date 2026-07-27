@@ -8,13 +8,11 @@ while preserving privacy, modularity, extensibility, and power-user control.
 
 ## Current status
 
-Omnira v0.1.0 Foundation is merged. The app now supports the Windows-first
-local GGUF chat MVP through a managed `llama-server` runtime, with conversation
-persistence and Advanced Diagnostics in place.
-
-The next milestone is **Alpha Polish**: release-readiness work around onboarding,
-model loading UX, diagnostics, installer testing, screenshots, documentation,
-and release workflow. Nothing in the long-term vision section is implemented yet.
+Internal alpha **v0.1.0-alpha** is tagged (see `docs/release-notes-0.1.0-alpha.md`).
+Chat MVP is complete and Sign-Off is recorded. Phase 6 adds CUDA 12.4 as a
+third llama-server variant (CUDA → Vulkan → CPU on NVIDIA machines). Phase 7
+lands the Create screen and image-provider seam; a local diffusion worker
+binary is still required for successful generation.
 
 ## What the MVP is (current scope)
 
@@ -29,10 +27,10 @@ The MVP does exactly one workflow, and does it well:
 7. Everything runs locally. No telemetry, accounts, cloud sync, or external
    network calls by default. Omnira works with the internet disconnected.
 
-MVP screens: **Chat**, **Models**, **Settings**, and **Advanced Diagnostics**.
+MVP screens: **Chat**, **Create**, **Models**, **Settings**, and **Advanced Diagnostics**.
 
 The main UI says "Running locally". Technical details -- the selected accelerator
-(Vulkan or CPU), ports, process state, logs -- live in Advanced Diagnostics only.
+(CUDA, Vulkan, or CPU), ports, process state, logs -- live in Advanced Diagnostics only.
 
 ### Explicitly not in the MVP
 

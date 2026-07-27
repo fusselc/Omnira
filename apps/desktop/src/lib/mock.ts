@@ -7,6 +7,7 @@
 import type {
   Conversation,
   DiagnosticsSnapshot,
+  Generation,
   Message,
   ModelEntry,
   RuntimeStatus,
@@ -28,6 +29,7 @@ let settings: Settings = {
 const models: ModelEntry[] = [];
 const conversations: Conversation[] = [];
 const messages: Message[] = [];
+const generations: Generation[] = [];
 let runtime: RuntimeStatus = {
   state: "stopped",
   variant: null,
@@ -179,6 +181,27 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
     }
     case "diagnostics_export":
       return "C:\\Users\\you\\AppData\\Local\\Omnira\\diagnostics\\omnira-diagnostics-mock.json";
+
+    case "image_runtime_status":
+      return {
+        available: false,
+        detail:
+          "Mock mode has no diffusion worker. Packaged builds look under %LOCALAPPDATA%\\Omnira\\runtimes\\diffusion\\.",
+      };
+    case "list_generations":
+      return [...generations].sort((a, b) => b.created_at.localeCompare(a.created_at));
+    case "generate_image":
+      throw {
+        code: "RuntimeMissing",
+        message: "Omnira's engine is not available.",
+        suggested_action: "Install a local diffusion worker to generate images.",
+        detail: "mock: no diffusion worker",
+      };
+    case "delete_generation": {
+      const idx = generations.findIndex((g) => g.id === args!.id);
+      if (idx >= 0) generations.splice(idx, 1);
+      return;
+    }
 
     default:
       throw new Error(`mock backend: unknown command ${cmd}`);
