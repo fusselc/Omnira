@@ -33,6 +33,7 @@ pub fn run() {
             commands::list_models,
             commands::add_model,
             commands::remove_model,
+            commands::rename_model,
             commands::list_conversations,
             commands::create_conversation,
             commands::rename_conversation,

@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 use rusqlite::Connection;
 
-use crate::errors::AppError;
+use crate::errors::{AppError, ErrorCode};
 use crate::gguf;
 use crate::paths;
 use crate::types::{
@@ -163,6 +163,24 @@ impl Storage {
     pub fn remove_model(&self, id: &str) -> Result<(), AppError> {
         self.with(|c| {
             c.execute("DELETE FROM models WHERE id = ?1", rusqlite::params![id])?;
+            Ok(())
+        })
+    }
+
+    /// Renames the registry display name only. Never renames or moves the file.
+    pub fn rename_model(&self, id: &str, name: &str) -> Result<(), AppError> {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err(AppError::new(
+                ErrorCode::UnknownRuntimeError,
+                Some("Model name cannot be empty".into()),
+            ));
+        }
+        self.with(|c| {
+            c.execute(
+                "UPDATE models SET name = ?1 WHERE id = ?2",
+                rusqlite::params![trimmed, id],
+            )?;
             Ok(())
         })
     }

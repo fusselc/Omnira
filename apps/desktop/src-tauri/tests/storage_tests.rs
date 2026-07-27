@@ -49,6 +49,12 @@ fn model_registry_lifecycle_and_file_status_detection() {
     assert_eq!(listed[0].status, ModelStatus::Invalid);
     std::fs::remove_file(&real).unwrap();
 
+    // Display-name rename does not require the file to exist.
+    db.rename_model(&m.id, "  Display Name  ").unwrap();
+    assert_eq!(db.list_models().unwrap()[0].name, "Display Name");
+    assert!(db.rename_model(&m.id, "   ").is_err());
+    assert!(db.rename_model(&m.id, "").is_err());
+
     // Removing the entry never requires the file to exist.
     db.remove_model(&m.id).unwrap();
     assert!(db.list_models().unwrap().is_empty());

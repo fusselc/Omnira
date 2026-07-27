@@ -82,8 +82,11 @@ on NVIDIA for heavy workloads, Vulkan/CPU fallback) is introduced incrementally
 starting Phase 6.
 
 Other post-MVP capabilities, unscheduled: hardware detection UI, model download
-assistance, model renaming (H3), ComfyUI integration as a managed worker, local knowledge base,
+assistance, ComfyUI integration as a managed worker, local knowledge base,
 music generation, community provider registry.
+
+Model display-name renaming (H3) shipped in the Models screen (registry name
+only; GGUF path unchanged).
 
 ## Update strategy (placeholder -- post-MVP)
 
