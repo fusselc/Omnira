@@ -1,29 +1,22 @@
-# PENDING: Human evidence — offline / network / install / logs / devtools
+# Human QA — COMPLETE (2026-07-27)
 
-These gates require a maintainer session on Windows.
+Maintainer Chris Fussel completed the guided helper
+`scripts/diagnostics/run-alpha-human-qa.ps1` on 2026-07-27. All gates Passed.
+Checklist items and Sign-Off are updated in
+[alpha-readiness-checklist.md](../alpha-readiness-checklist.md).
 
-## Easiest way
+| Gate | Status | Evidence |
+|------|--------|----------|
+| Devtools release smoke-check | PASS | [2026-07-27-devtools-smoke.md](2026-07-27-devtools-smoke.md) |
+| Offline-after-install | PASS | [2026-07-27-offline-after-install.md](2026-07-27-offline-after-install.md) |
+| No external network calls | PASS | [2026-07-27-network-monitor.md](2026-07-27-network-monitor.md) |
+| Prompt-free logs | PASS | [2026-07-27-prompt-free-logs.md](2026-07-27-prompt-free-logs.md) |
+| Fresh install / relaunch | PASS | [2026-07-27-fresh-install-relaunch.md](2026-07-27-fresh-install-relaunch.md) |
+| Uninstall (beyond orphan-check) | PASS | [2026-07-27-uninstall-orphan.md](2026-07-27-uninstall-orphan.md) |
+| 13 MVP acceptance criteria | PASS | [2026-07-27-mvp-acceptance-13.md](2026-07-27-mvp-acceptance-13.md) |
 
-In PowerShell from the repo root:
+To re-run later (new release candidate):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\diagnostics\run-alpha-human-qa.ps1
 ```
-
-That script asks simple y/n questions and writes dated files under `docs/evidence/`.
-When it finishes, tell the agent: **Human QA done — update the checklist**.
-
-## Status (until the helper is run)
-
-| Gate | Status | Evidence file (when done) |
-|------|--------|---------------------------|
-| Devtools release smoke-check | PENDING | `YYYY-MM-DD-devtools-smoke.md` |
-| Offline-after-install | PENDING | `YYYY-MM-DD-offline-after-install.md` |
-| No external network calls | PENDING | `YYYY-MM-DD-network-monitor.md` |
-| Prompt-free logs | PENDING | `YYYY-MM-DD-prompt-free-logs.md` |
-| Fresh install / relaunch | PENDING | `YYYY-MM-DD-fresh-install-relaunch.md` |
-| Uninstall (beyond orphan-check) | PENDING | `YYYY-MM-DD-uninstall-orphan.md` |
-| 13 MVP acceptance criteria | PENDING | `YYYY-MM-DD-mvp-acceptance-13.md` |
-
-Do not mark the matching checklist items Verified until the dated evidence files
-exist and are linked from `docs/alpha-readiness-checklist.md`.
