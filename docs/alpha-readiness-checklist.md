@@ -19,11 +19,14 @@ Current blocked items: **none identified**.
 
 ## Current Evidence Snapshot
 
+- **Verified, 2026-07-27**: Maintainer human QA (devtools, offline, network
+  monitor, prompt-free logs, fresh install/relaunch, uninstall, 13 MVP
+  criteria) — evidence under `docs/evidence/2026-07-27-*.md`. Sign-Off dated
+  2026-07-27.
 - **Verified, 2026-07-19**: Runtime fetch fail-closed —
   [docs/evidence/2026-07-19-fetch-fail-closed.txt](evidence/2026-07-19-fetch-fail-closed.txt).
 - **Verified, 2026-07-19**: Job Object orphan-check PASS —
-  [docs/evidence/2026-07-19-orphan-check.txt](evidence/2026-07-19-orphan-check.txt)
-  (manual uninstall still open).
+  [docs/evidence/2026-07-19-orphan-check.txt](evidence/2026-07-19-orphan-check.txt).
 - **Verified, 2026-07-19**: Code signing evaluation for internal alpha —
   unsigned builds accepted; OV/EV deferred until public alpha. See
   [packaging-process-model.md](packaging-process-model.md) §6 and
@@ -193,7 +196,7 @@ evidence in the sections below before tagging or publishing installers.
     `http://ipc.localhost`, and `http://127.0.0.1:*`; no remote script, style,
     frame, object, or form sources are configured.
 
-- [ ] **Not yet verified: Devtools disabled/verified in production**
+- [x] **Verified: Devtools disabled/verified in production**
   - Confirm `apps/desktop/src-tauri/Cargo.toml` does **not** enable Tauri's
     `devtools` feature on the `tauri` dependency.
   - Release builds (`cargo build --release` / `tauri build`) must not expose
@@ -203,10 +206,10 @@ evidence in the sections below before tagging or publishing installers.
   - Smoke-check a release install: right-click -> Inspect / devtools entry
     should not be available (WebView2 behavior varies; absence of the `devtools`
     feature is the guarantee).
-  - Partial evidence, 2026-07-02 / 2026-07-10: `Cargo.toml` sets
+  - Evidence, 2026-07-02 / 2026-07-10: `Cargo.toml` sets
     `tauri = { version = "2", features = [] }` (no `devtools` feature).
-  - Evidence still needed: release-install smoke-check confirming Inspect /
-    remote debugging is unavailable.
+  - Evidence, 2026-07-27: release-install smoke-check Pass —
+    [docs/evidence/2026-07-27-devtools-smoke.md](evidence/2026-07-27-devtools-smoke.md).
 
 - [x] **Verified: llama-server loopback + api-key verification**
   - From Advanced Diagnostics or logs, confirm runtime binds to `127.0.0.1`
@@ -230,7 +233,7 @@ evidence in the sections below before tagging or publishing installers.
     `llama-server` start, prompt send, model response, and conversation
     persistence after close/reopen were manually validated.
 
-- [ ] **Not yet verified: Offline-after-install verification**
+- [x] **Verified: Offline-after-install verification**
   - Prerequisites: completed NSIS install, bundled runtimes present from the
     installer, and at least one valid local GGUF available on disk.
   - Disconnect all networking (Wi-Fi/Ethernet off or airplane mode).
@@ -239,31 +242,26 @@ evidence in the sections below before tagging or publishing installers.
     response -> quit -> relaunch -> prior conversation still present.
   - Automated helper: `scripts/diagnostics/offline-smoke-test.ps1` (guided
     manual steps and optional process/network checks).
-  - Evidence needed: dated offline install smoke-test notes that explicitly
-    record networking was disconnected before the full install-to-relaunch flow.
-    Code-level runtime tests alone are not sufficient evidence for this gate.
-  - Tracker: [docs/evidence/PENDING-human-qa.md](evidence/PENDING-human-qa.md).
+  - Evidence, 2026-07-27: maintainer attestation that networking was
+    disconnected; offline chat + quit/relaunch Pass —
+    [docs/evidence/2026-07-27-offline-after-install.md](evidence/2026-07-27-offline-after-install.md).
     Procedure: [alpha-manual-verification.md](alpha-manual-verification.md).
 
-- [ ] **Not yet verified: No external network calls at runtime**
+- [x] **Verified: No external network calls at runtime**
   - During the offline test above, monitor with Resource Monitor, Wireshark, or
     similar: Omnira and `llama-server` should not initiate outbound connections
     during normal chat (build-time fetch scripts are excluded).
-  - Evidence needed: dated network monitor notes naming the tool used (for
-    example Resource Monitor or Wireshark), the monitoring window, and whether
-    any outbound connections were observed from `omnira.exe` or
-    `llama-server.exe` during chat generation. A dependency audit alone is not
-    sufficient (the app uses `reqwest` for loopback chat proxying).
-  - Tracker: [docs/evidence/PENDING-human-qa.md](evidence/PENDING-human-qa.md).
+  - Evidence, 2026-07-27: Resource Monitor during chat; outbound connections
+    observed: none —
+    [docs/evidence/2026-07-27-network-monitor.md](evidence/2026-07-27-network-monitor.md).
 
-- [ ] **Not yet verified: Prompt-free logs verification**
+- [x] **Verified: Prompt-free logs verification**
   - Exercise chat, then inspect `%LOCALAPPDATA%\Omnira\logs\`.
   - Confirm no user prompts or assistant response text appear in log lines.
-  - Evidence needed: dated log inspection notes from a real chat session, with
-    message content omitted from the evidence notes.
-  - Partial evidence, 2026-07-06 / 2026-07-10: logging call sites record
-    lifecycle events, runtime metadata, and error codes only. Manual log-file
-    inspection after a chat session remains open.
+  - Evidence, 2026-07-06 / 2026-07-10: logging call sites record lifecycle
+    events, runtime metadata, and error codes only.
+  - Evidence, 2026-07-27: real-session log inspection Pass —
+    [docs/evidence/2026-07-27-prompt-free-logs.md](evidence/2026-07-27-prompt-free-logs.md).
 
 - [x] **Verified: Diagnostics redaction verification**
   - Export diagnostics **without** "include paths".
@@ -338,32 +336,33 @@ evidence in the sections below before tagging or publishing installers.
 
 ## Install Lifecycle
 
-- [ ] **Not yet verified: Fresh install / relaunch test**
+- [x] **Verified: Fresh install / relaunch test**
   - Install the NSIS artifact to a clean directory.
   - First launch completes local GGUF model selection or the existing-data path.
   - Confirm Omnira starts the managed `llama-server` runtime.
   - Send a chat prompt and receive a response.
   - Quit and relaunch: conversation history persists under
     `%LOCALAPPDATA%\Omnira\`.
-  - Evidence needed: dated interactive install/relaunch notes covering model
-    selection, streamed chat, and persistence after quit/reopen.
-  - Partial evidence, 2026-07-06: rebuilt per-machine NSIS artifact installed to
+  - Evidence, 2026-07-06: rebuilt per-machine NSIS artifact installed to
     `C:\Program Files\Omnira`, payload and HKLM uninstall metadata were present,
     and `omnira.exe` launched from Program Files.
+  - Evidence, 2026-07-27: interactive install/relaunch with model selection,
+    streamed chat, and persistence Pass —
+    [docs/evidence/2026-07-27-fresh-install-relaunch.md](evidence/2026-07-27-fresh-install-relaunch.md).
 
-- [ ] **Not yet verified: Uninstall / orphan-process test**
+- [x] **Verified: Uninstall / orphan-process test**
   - Run `scripts/dev/orphan-check.ps1` before release (Job Object verification).
   - If the harness cannot run, manually start Omnira from an installed build,
     load a local GGUF, confirm `llama-server.exe` appears, force-close Omnira,
     and confirm `llama-server.exe` exits with it.
   - After manual uninstall, confirm no orphaned `llama-server.exe` remains when
     Omnira is not running.
-  - Partial evidence, 2026-07-19: `scripts/dev/orphan-check.ps1` PASS — see
+  - Evidence, 2026-07-19: `scripts/dev/orphan-check.ps1` PASS — see
     [docs/evidence/2026-07-19-orphan-check.txt](evidence/2026-07-19-orphan-check.txt).
-    Job Object kill-on-close verified. Manual uninstall / Program Files removal
-    still required (see [PENDING-human-qa.md](evidence/PENDING-human-qa.md)).
-  - Partial evidence, 2026-07-06: earlier orphan-check PASS under the same
-    harness; silent Program Files uninstall remained open.
+    Job Object kill-on-close verified.
+  - Evidence, 2026-07-27: manual uninstall removed Program Files\Omnira while
+    preserving `%LOCALAPPDATA%\Omnira` and the on-disk GGUF —
+    [docs/evidence/2026-07-27-uninstall-orphan.md](evidence/2026-07-27-uninstall-orphan.md).
 
 ## Installer Scope (MVP Alpha)
 
@@ -397,17 +396,14 @@ evidence in the sections below before tagging or publishing installers.
     purchase is deferred until public alpha. Decision recorded in
     packaging-process-model.md §6 "Decision, 2026-07-19 (internal alpha)".
 
-- [ ] **Not yet verified: 13 MVP acceptance criteria reviewed end-to-end**
+- [x] **Verified: 13 MVP acceptance criteria reviewed end-to-end**
   - Canonical list: [alpha-manual-verification.md](alpha-manual-verification.md).
-  - Evidence needed: dated criteria review with any exceptions tracked (see
-    [docs/evidence/PENDING-human-qa.md](evidence/PENDING-human-qa.md)).
-  - Partial: runbook and numbered criteria published 2026-07-19; maintainer
-    end-to-end pass still required.
+  - Evidence, 2026-07-27: overall Pass; all 13 criteria marked Pass with no
+    exceptions —
+    [docs/evidence/2026-07-27-mvp-acceptance-13.md](evidence/2026-07-27-mvp-acceptance-13.md).
 
 ## Sign-Off
 
 | Role | Name | Date | Notes |
 |------|------|------|-------|
-| Maintainer | Chris Fussel | | **Not signed off.** Complete human QA in
-[PENDING-human-qa.md](evidence/PENDING-human-qa.md), then set Date and replace
-these notes. Phase 6 (CUDA) must not start until this row is dated. |
+| Maintainer | Chris Fussel | 2026-07-27 | Signed off. Human QA completed with evidence recorded under `docs/evidence/2026-07-27-*`. |
