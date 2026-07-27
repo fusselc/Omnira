@@ -120,6 +120,7 @@ export interface Settings {
   runtime_path_override: string | null;
   preferred_runtime_variant: RuntimeVariant | null;
   onboarding_complete: boolean;
+  last_conversation_id: string | null;
 }
 
 export interface DiagnosticsSnapshot {
@@ -141,6 +142,8 @@ export const ipc = {
   // Settings
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),
+  setLastConversation: (id: string | null) =>
+    invoke<void>("set_last_conversation", { id }),
 
   // Models
   listModels: () => invoke<ModelEntry[]>("list_models"),

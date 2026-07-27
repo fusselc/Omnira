@@ -37,6 +37,18 @@ pub fn save_settings(settings: Settings) -> Result<(), AppError> {
     config::save(&settings)
 }
 
+/// Records the thread to reopen on next launch. Writing only this field avoids
+/// overwriting settings the user changed elsewhere in the same session.
+#[tauri::command]
+pub fn set_last_conversation(id: Option<String>) -> Result<(), AppError> {
+    let mut settings = config::load();
+    if settings.last_conversation_id == id {
+        return Ok(());
+    }
+    settings.last_conversation_id = id;
+    config::save(&settings)
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -120,13 +132,31 @@ pub fn set_conversation_model(
 
 #[tauri::command]
 pub fn delete_conversation(state: State<AppState>, id: String) -> Result<(), AppError> {
-    state.storage.delete_conversation(&id)
+    state.storage.delete_conversation(&id)?;
+    forget_last_conversation_if(|last| last == id);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn clear_conversations(state: State<AppState>) -> Result<(), AppError> {
     logging::info("data.clear_conversations", "");
-    state.storage.clear_conversations()
+    state.storage.clear_conversations()?;
+    forget_last_conversation_if(|_| true);
+    Ok(())
+}
+
+/// Drops the remembered thread when its conversation no longer exists. A failed
+/// settings write is not worth failing the deletion the user asked for.
+fn forget_last_conversation_if(matches: impl Fn(&str) -> bool) {
+    let mut settings = config::load();
+    let should_clear = settings
+        .last_conversation_id
+        .as_deref()
+        .is_some_and(matches);
+    if should_clear {
+        settings.last_conversation_id = None;
+        let _ = config::save(&settings);
+    }
 }
 
 #[tauri::command]
