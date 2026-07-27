@@ -16,6 +16,19 @@ Do not mark a gate Verified from code audit prose alone.
 
 ## Ordered session
 
+**Easiest path:** run the interactive helper (asks yes/no and writes evidence):
+
+```powershell
+cd E:\Omnira
+powershell -ExecutionPolicy Bypass -File scripts\diagnostics\run-alpha-human-qa.ps1
+```
+
+You already have an installer at:
+
+`apps\desktop\src-tauri\target\release\bundle\nsis\Omnira_0.1.0_x64-setup.exe`
+
+Manual equivalent:
+
 1. **Build NSIS** from `apps/desktop/`: `npm.cmd run tauri build`
 2. Walk [release-qa-checklist.md](release-qa-checklist.md) sections 1–8
 3. Run `scripts/diagnostics/offline-smoke-test.ps1` with networking **actually
@@ -27,7 +40,7 @@ Do not mark a gate Verified from code audit prose alone.
    prompt-free behavior
 6. On the release install: confirm WebView2 Inspect / remote debugging is not
    available (devtools smoke-check)
-7. Map each result to the matching checkbox in
+7. Map each step to the matching checkbox in
    [alpha-readiness-checklist.md](alpha-readiness-checklist.md)
 
 ## Checklist gate mapping
@@ -74,9 +87,11 @@ Record a dated pass/fail for each in
 | Cargo/npm verification | Devtools Inspect on release UI |
 | Code-signing decision docs | Full uninstall + reinstall recognition |
 | Model rename (H3) feature | Sign-Off row attestation |
+| Guided evidence recorder script | Answering the script's y/n prompts |
 
 ## After the session
 
-1. Link every new evidence file from alpha-readiness-checklist.md
-2. Complete the Sign-Off table (human maintainer only)
-3. Do not start Phase 6 (CUDA) or image generation until Sign-Off is filled
+1. Tell the agent: "Human QA done — update the checklist and Sign-Off"
+2. Agent links evidence files and updates alpha-readiness-checklist.md
+3. You date the Sign-Off row (human only)
+4. Do not start Phase 6 (CUDA) or image generation until Sign-Off is filled
