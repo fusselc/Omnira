@@ -13,8 +13,8 @@ use crate::logging;
 use crate::runtime::{self, RuntimeManager};
 use crate::storage::Storage;
 use crate::types::{
-    ChatEndpoint, Conversation, DiagnosticsSnapshot, Message, MessageRole, MessageStatus,
-    ModelEntry, RuntimeStatus, Settings,
+    ChatEndpoint, Conversation, DiagnosticsSnapshot, Generation, ImageRuntimeStatus, Message,
+    MessageRole, MessageStatus, ModelEntry, RuntimeStatus, Settings,
 };
 
 pub struct AppState {
@@ -291,6 +291,41 @@ pub async fn chat_stream(
 #[tauri::command]
 pub fn chat_cancel(state: State<AppState>, stream_id: String) {
     state.chat_streams.cancel(&stream_id);
+}
+
+// ---------------------------------------------------------------------------
+// Image generation (Phase 7)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn image_runtime_status() -> ImageRuntimeStatus {
+    crate::image::status()
+}
+
+#[tauri::command]
+pub fn list_generations(state: State<AppState>) -> Result<Vec<Generation>, AppError> {
+    state.storage.list_generations()
+}
+
+#[tauri::command]
+pub async fn generate_image(
+    state: State<'_, AppState>,
+    prompt: String,
+    width: u32,
+    height: u32,
+) -> Result<Generation, AppError> {
+    crate::image::generate(&state.storage, prompt, width, height).await
+}
+
+#[tauri::command]
+pub fn delete_generation(state: State<AppState>, id: String) -> Result<(), AppError> {
+    // Best-effort file cleanup; DB row is authoritative for the gallery.
+    if let Ok(list) = state.storage.list_generations() {
+        if let Some(gen) = list.into_iter().find(|g| g.id == id) {
+            let _ = std::fs::remove_file(&gen.path);
+        }
+    }
+    state.storage.delete_generation(&id)
 }
 
 // ---------------------------------------------------------------------------

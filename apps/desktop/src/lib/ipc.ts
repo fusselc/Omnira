@@ -95,7 +95,7 @@ export interface Message {
   created_at: string;
 }
 
-export type RuntimeVariant = "vulkan" | "cpu";
+export type RuntimeVariant = "cuda" | "vulkan" | "cpu";
 export type RuntimeState = "stopped" | "starting" | "ready" | "error";
 
 export interface RuntimeStatus {
@@ -113,6 +113,23 @@ export interface ChatEndpoint {
   base_url: string;
   api_key: string;
   context_chars_budget: number;
+}
+
+export type GenerationStatus = "complete" | "failed";
+
+export interface Generation {
+  id: string;
+  prompt: string;
+  width: number;
+  height: number;
+  path: string;
+  status: GenerationStatus;
+  created_at: string;
+}
+
+export interface ImageRuntimeStatus {
+  available: boolean;
+  detail: string;
 }
 
 export interface Settings {
@@ -184,6 +201,13 @@ export const ipc = {
   chatStream: (streamId: string, messages: { role: string; content: string }[]) =>
     invoke<void>("chat_stream", { streamId, messages }),
   chatCancel: (streamId: string) => invoke<void>("chat_cancel", { streamId }),
+
+  // Image generation (Phase 7)
+  imageRuntimeStatus: () => invoke<ImageRuntimeStatus>("image_runtime_status"),
+  listGenerations: () => invoke<Generation[]>("list_generations"),
+  generateImage: (prompt: string, width: number, height: number) =>
+    invoke<Generation>("generate_image", { prompt, width, height }),
+  deleteGeneration: (id: string) => invoke<void>("delete_generation", { id }),
 
   // Diagnostics
   diagnosticsSnapshot: () => invoke<DiagnosticsSnapshot>("diagnostics_snapshot"),

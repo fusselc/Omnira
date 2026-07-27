@@ -1,10 +1,11 @@
-import { MessageSquare, Boxes, Settings as SettingsIcon, Activity } from "lucide-react";
+import { MessageSquare, Boxes, ImagePlus, Settings as SettingsIcon, Activity } from "lucide-react";
 import { BrandMark } from "./BrandMark";
 
-export type Screen = "chat" | "models" | "settings" | "diagnostics";
+export type Screen = "chat" | "create" | "models" | "settings" | "diagnostics";
 
 const items: { id: Screen; label: string; icon: typeof MessageSquare }[] = [
   { id: "chat", label: "Chat", icon: MessageSquare },
+  { id: "create", label: "Create", icon: ImagePlus },
   { id: "models", label: "Models", icon: Boxes },
   { id: "settings", label: "Settings", icon: SettingsIcon },
   { id: "diagnostics", label: "Advanced Diagnostics", icon: Activity },

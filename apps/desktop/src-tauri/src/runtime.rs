@@ -1,8 +1,9 @@
 //! Managed llama-server lifecycle (docs/architecture.md sections 2, 4, 5).
 //!
-//! Responsibilities: runtime variant selection (Vulkan -> CPU fallback),
-//! loopback port reservation, per-session api-key generation, spawn under the
-//! Job Object, health gating, shutdown, and status snapshots.
+//! Responsibilities: runtime variant selection (CUDA -> Vulkan -> CPU on NVIDIA
+//! machines; otherwise Vulkan -> CPU), loopback port reservation, per-session
+//! api-key generation, spawn under the Job Object, health gating, shutdown,
+//! and status snapshots.
 
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -80,6 +81,7 @@ fn runtime_binary(
     }
 
     let dir_name = match variant {
+        RuntimeVariant::Cuda => "cuda",
         RuntimeVariant::Vulkan => "vulkan",
         RuntimeVariant::Cpu => "cpu",
     };
@@ -87,6 +89,16 @@ fn runtime_binary(
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Some(res) = resource_dir {
         candidates.push(res.join("runtimes").join(dir_name).join("llama-server.exe"));
+    }
+    // Optional acceleration pack / user drop-in (LocalAppData), Phase 6.
+    if let Some(local) = dirs::data_local_dir() {
+        candidates.push(
+            local
+                .join("Omnira")
+                .join("runtimes")
+                .join(dir_name)
+                .join("llama-server.exe"),
+        );
     }
     // Dev layout (populated by scripts/packaging/fetch-llama-server.ps1).
     candidates.push(
@@ -247,6 +259,7 @@ impl RuntimeManager {
             state: inner.state,
             variant: rt.map(|r| r.variant),
             accelerator_label: rt.map(|r| match r.variant {
+                RuntimeVariant::Cuda => "NVIDIA GPU (CUDA)".to_string(),
                 RuntimeVariant::Vulkan => "GPU (Vulkan)".to_string(),
                 RuntimeVariant::Cpu => "CPU".to_string(),
             }),
@@ -303,8 +316,9 @@ pub fn context_chars_budget(ctx_size: u64) -> u64 {
     usable * CHARS_PER_TOKEN
 }
 
-/// Start llama-server for the given model: Vulkan first, CPU fallback
-/// (Decision 9). The working variant and any fallback reason are recorded.
+/// Start llama-server for the given model. Preference order:
+/// recorded preferred variant first when set, else CUDA -> Vulkan -> CPU when
+/// an NVIDIA GPU is detected, else Vulkan -> CPU (Phase 6).
 pub async fn start(
     resource_dir: Option<PathBuf>,
     override_path: Option<String>,
@@ -318,11 +332,7 @@ pub async fn start(
         _ => DEFAULT_CTX_SIZE,
     };
 
-    // Variant order: recorded working variant first if any, else Vulkan -> CPU.
-    let order: Vec<RuntimeVariant> = match preferred {
-        Some(RuntimeVariant::Cpu) => vec![RuntimeVariant::Cpu, RuntimeVariant::Vulkan],
-        _ => vec![RuntimeVariant::Vulkan, RuntimeVariant::Cpu],
-    };
+    let order = variant_order(preferred);
 
     let mut first_failure: Option<(RuntimeVariant, AppError)> = None;
 
@@ -361,9 +371,87 @@ pub async fn start(
         .unwrap_or_else(|| AppError::new(ErrorCode::RuntimeMissing, None)))
 }
 
+/// Build the attempt order for runtime variants.
+fn variant_order(preferred: Option<RuntimeVariant>) -> Vec<RuntimeVariant> {
+    let nvidia = nvidia_gpu_present();
+    let default_order = if nvidia {
+        vec![
+            RuntimeVariant::Cuda,
+            RuntimeVariant::Vulkan,
+            RuntimeVariant::Cpu,
+        ]
+    } else {
+        vec![RuntimeVariant::Vulkan, RuntimeVariant::Cpu]
+    };
+
+    match preferred {
+        Some(pref) => {
+            let mut order = vec![pref];
+            for v in default_order {
+                if v != pref {
+                    order.push(v);
+                }
+            }
+            order
+        }
+        None => default_order,
+    }
+}
+
+/// Best-effort local NVIDIA detection. No network; looks for nvidia-smi on
+/// PATH, System32, or the NVSMI install folder. Absence skips CUDA preference.
+fn nvidia_gpu_present() -> bool {
+    which_nvidia_smi().is_some()
+}
+
+fn which_nvidia_smi() -> Option<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(path) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path) {
+            candidates.push(dir.join("nvidia-smi.exe"));
+        }
+    }
+    candidates.push(PathBuf::from(r"C:\Windows\System32\nvidia-smi.exe"));
+    if let Some(pf) = std::env::var_os("ProgramFiles") {
+        candidates.push(
+            PathBuf::from(pf)
+                .join("NVIDIA Corporation")
+                .join("NVSMI")
+                .join("nvidia-smi.exe"),
+        );
+    }
+    candidates.into_iter().find(|p| p.is_file())
+}
+
 /// Stop a managed runtime gracefully-ish: kill the child and reap it.
 pub async fn stop(mut rt: ManagedRuntime) {
     logging::info("runtime.stop", &format!("port={}", rt.port));
     let _ = rt.child.start_kill();
     let _ = rt.child.wait().await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::variant_order;
+    use crate::types::RuntimeVariant;
+
+    #[test]
+    fn preferred_variant_is_tried_first() {
+        let order = variant_order(Some(RuntimeVariant::Cpu));
+        assert_eq!(order[0], RuntimeVariant::Cpu);
+        assert!(order.contains(&RuntimeVariant::Vulkan));
+    }
+
+    #[test]
+    fn default_order_includes_vulkan_and_cpu() {
+        let order = variant_order(None);
+        assert!(order.contains(&RuntimeVariant::Vulkan));
+        assert!(order.contains(&RuntimeVariant::Cpu));
+        // CUDA is included only when nvidia-smi is present on this machine.
+        if order.contains(&RuntimeVariant::Cuda) {
+            assert_eq!(order[0], RuntimeVariant::Cuda);
+        } else {
+            assert_eq!(order[0], RuntimeVariant::Vulkan);
+        }
+    }
 }

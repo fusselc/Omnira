@@ -480,8 +480,12 @@ export function Chat({
           <div className="px-5 pt-3">
             <div className="flex items-center justify-between rounded-xl border border-accent-warning/30 bg-accent-warning/5 px-4 py-3 text-sm text-zinc-200">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-accent-warning font-semibold">⚡ Performance Note:</span>
-                <span>Running in CPU mode. Responses may be slower because GPU acceleration was unavailable.</span>
+                <span className="text-accent-warning font-semibold">Performance note:</span>
+                <span>
+                  {runtime.variant === "cpu"
+                    ? "Running in CPU mode. Responses may be slower because GPU acceleration was unavailable."
+                    : "Running on a fallback accelerator. Responses may be slower than the preferred GPU path."}
+                </span>
                 <button
                   onClick={onGoToDiagnostics}
                   className="ml-1 text-xs font-semibold text-accent-primary hover:underline"

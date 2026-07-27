@@ -15,7 +15,7 @@ export interface RuntimeStateSummary {
 
 export interface VariantBadge {
   label: string;
-  tone: "vulkan" | "cpu" | "none";
+  tone: "cuda" | "vulkan" | "cpu" | "none";
 }
 
 export interface FallbackExplanation {
@@ -53,6 +53,9 @@ export function variantBadge(
   variant: RuntimeVariant | null,
   acceleratorLabel: string | null,
 ): VariantBadge {
+  if (variant === "cuda") {
+    return { label: "NVIDIA GPU (CUDA)", tone: "cuda" };
+  }
   if (variant === "vulkan") {
     return { label: "GPU acceleration (Vulkan)", tone: "vulkan" };
   }
@@ -64,16 +67,22 @@ export function variantBadge(
     if (lower.includes("cpu")) {
       return { label: acceleratorLabel, tone: "cpu" };
     }
+    if (lower.includes("cuda")) {
+      return { label: acceleratorLabel, tone: "cuda" };
+    }
     return { label: acceleratorLabel, tone: "vulkan" };
   }
   return { label: "Not running", tone: "none" };
 }
 
 export function fallbackExplanation(fallbackReason: string): FallbackExplanation {
+  const lower = fallbackReason.toLowerCase();
+  const fromCuda = lower.includes("cuda");
   return {
-    title: "Using CPU mode",
-    body:
-      "Omnira tried GPU acceleration (Vulkan) first. It switched to CPU so chat can still run locally on this computer.",
+    title: fromCuda ? "Using a fallback accelerator" : "Using CPU mode",
+    body: fromCuda
+      ? "Omnira tried NVIDIA CUDA first. It switched to another local accelerator so chat can still run on this computer."
+      : "Omnira tried GPU acceleration (Vulkan) first. It switched to CPU so chat can still run locally on this computer.",
     technicalDetail: fallbackReason,
   };
 }
@@ -113,6 +122,8 @@ export function resolveLoadedModel(
 
 export function variantBadgeClass(tone: VariantBadge["tone"]): string {
   switch (tone) {
+    case "cuda":
+      return "bg-accent-success/15 text-accent-success";
     case "vulkan":
       return "bg-accent-primary/15 text-accent-primary";
     case "cpu":

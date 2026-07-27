@@ -4,6 +4,7 @@ mod config;
 mod diagnostics;
 pub mod errors;
 pub mod gguf;
+mod image;
 mod logging;
 mod paths;
 mod process;
@@ -49,6 +50,10 @@ pub fn run() {
             commands::stop_runtime,
             commands::chat_stream,
             commands::chat_cancel,
+            commands::image_runtime_status,
+            commands::list_generations,
+            commands::generate_image,
+            commands::delete_generation,
             commands::diagnostics_snapshot,
             commands::diagnostics_export,
         ])

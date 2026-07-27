@@ -28,14 +28,17 @@ Two pinned llama.cpp `llama-server` Windows builds ship in the installer:
 - **Vulkan x64** -- GPU acceleration on NVIDIA, AMD, and Intel GPUs.
 - **CPU x64 (AVX2)** -- universal fallback.
 
-Selection: try Vulkan first; on health-check failure (missing/old drivers),
-fall back to CPU automatically and record the working variant in config.
-The runtime manager treats variants as additive data so future backends (CUDA)
+Selection: on NVIDIA machines (nvidia-smi present), try CUDA first, then
+Vulkan, then CPU. Otherwise Vulkan then CPU. On health-check failure the
+manager records a fallback reason and continues. Preferred working variants
+are remembered in settings. Variants remain additive data so future backends
 require no architectural change.
 
 Current pin: llama.cpp release tag `b9859`
 (commit `4fc4ec5541b243957ae5099edb67372f8f3b550e`). Artifact names and SHA-256
 checksums are recorded in `THIRD_PARTY_LICENSES` and in the packaging script.
+Phase 6 adds the CUDA 12.4 Windows build plus the matching cudart
+redistributable.
 
 ## 3. Runtime acquisition -- binaries are never committed
 
@@ -63,8 +66,10 @@ Dev mode uses the same script, or a user-supplied runtime path via Settings.
   **MSI is deferred** until after alpha; NSIS is sufficient for early releases.
 - NSIS installs per-machine under `Program Files\Omnira`; runtime/user data
   remains separate under `%LOCALAPPDATA%\Omnira\`.
-- The installer includes: the Omnira executable, both llama-server variants and
-  their DLLs, `THIRD_PARTY_LICENSES`, and LICENSE.
+- The installer includes: the Omnira executable, llama-server variants
+  (Vulkan, CPU, and CUDA 12.4 with cudart DLLs) and their DLLs,
+  `THIRD_PARTY_LICENSES`, and LICENSE. Use
+  `fetch-llama-server.ps1 -SkipCuda` only for Vulkan/CPU-only artifacts.
 - No network access is required at install time or first run. The installer
   uses `webviewInstallMode: skip` and does not download WebView2. **Release
   notes must state that the WebView2 runtime is a prerequisite**; alpha targets

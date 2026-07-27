@@ -4,26 +4,27 @@ This file is the canonical repository-wide instruction source for coding agents 
 
 ## Project Scope
 
-- MVP scope is Windows-first local GGUF chat only.
+- Core product remains Windows-first, local-first. Chat MVP is local GGUF via
+  managed llama-server (Vulkan, CPU, and CUDA 12.4).
 - The runtime stack is Tauri 2, React, TypeScript, Tailwind CSS, and a Rust core.
 - The Rust core owns process supervision, SQLite persistence, config, and typed IPC.
-- Do not add a Python runtime, FastAPI orchestrator, PyInstaller pipeline, or `backend/` directory for MVP. See `docs/adr/0001-rust-tauri-core-orchestrator.md`.
+- Do not add a Python runtime, FastAPI orchestrator, PyInstaller pipeline, or `backend/` directory. See `docs/adr/0001-rust-tauri-core-orchestrator.md`.
 - Do not add telemetry, accounts, cloud sync, model downloads, or default external network calls.
 
 ## Runtime And Data Rules
 
-- Do not commit `llama-server` binaries.
-- Do not commit GGUF model files.
+- Do not commit `llama-server` binaries or diffusion worker binaries.
+- Do not commit GGUF model files or generated image binaries.
 - Runtime data belongs under `%LOCALAPPDATA%\Omnira\`.
 - Models are referenced in place by default.
 - `llama-server` must be loopback-only and protected by a per-session API key.
 
 ## UI And Product Rules
 
-- MVP screens are Chat, Models, Settings, and Advanced Diagnostics only.
-- Keep post-MVP features out of the active UI unless explicitly requested.
+- Active screens: Chat, Create (image), Models, Settings, and Advanced Diagnostics.
+- Keep later roadmap features (video, voice, RAG, agents) out of the active UI unless explicitly requested.
 - Main UI copy should say "Running locally", not "GPU accelerated".
-- Advanced Diagnostics may name runtime variants such as Vulkan or CPU.
+- Advanced Diagnostics may name runtime variants such as CUDA, Vulkan, or CPU.
 
 ## Documentation Rules
 

@@ -18,7 +18,7 @@ not one universal engine.
 
 | Pillar | Engine | Primary use | Status |
 |---|---|---|---|
-| **LLM** | llama.cpp / GGUF (`llama-server`) | Chat, tools/agents, code, reasoning | **MVP ships this pillar only** (Vulkan + CPU; CUDA is the first post-MVP addition) |
+| **LLM** | llama.cpp / GGUF (`llama-server`) | Chat, tools/agents, code, reasoning | **MVP + Phase 6**: Vulkan + CPU + CUDA 12.4 |
 | **Windows-native** | Windows ML / ONNX | Vision (classification, detection, segmentation); audio (ASR, TTS); diffusion components (UNet, VAE, schedulers); NPU acceleration on Copilot+ PCs | Post-MVP; requires `OnnxProvider` / Windows ML integration |
 | **High-performance GPU** | CUDA / TensorRT | Large LLMs (Gemma, Llama 3, DeepSeek); heavy diffusion; video generation | Post-MVP; CUDA llama.cpp variant first, then diffusion/video workers |
 
@@ -46,9 +46,9 @@ Hardware-aware routing arrives incrementally starting Phase 6: prefer NPU on
 Copilot+ PCs for ONNX workloads, prefer CUDA on NVIDIA for heavy workloads,
 fall back to Vulkan and then CPU.
 
-In the MVP, "routing" degenerates to the fixed Vulkan -> CPU selection for a
-single worker type, implemented so additional backends are additive data, not
-architectural changes.
+In the MVP, "routing" degenerated to Vulkan -> CPU. Phase 6 extends that to
+CUDA -> Vulkan -> CPU when an NVIDIA GPU is detected locally (nvidia-smi),
+falling back without network calls.
 
 ## 4. Provider abstraction growth
 
@@ -95,10 +95,17 @@ biggest expected performance gap for NVIDIA users on the MVP's Vulkan path.
 ## 6. Integration notes per pillar
 
 - **CUDA llama.cpp (Phase 6):** same `llama-server` supervision model; the
-  CUDA build becomes a third runtime variant with hardware detection choosing
-  CUDA > Vulkan > CPU on NVIDIA machines. Distribution (installer size vs.
-  optional acceleration pack) is decided with the update strategy
+  CUDA 12.4 build is a third runtime variant. On NVIDIA machines the attempt
+  order is CUDA -> Vulkan -> CPU. Official cudart redistributable DLLs are
+  merged into the cuda folder so a full CUDA Toolkit is not required.
+  Distribution decision for this phase: **bundle CUDA in the NSIS installer**
+  alongside Vulkan/CPU (installer size grows). An optional LocalAppData
+  drop-in at `%LOCALAPPDATA%\Omnira\runtimes\cuda\` is also searched so a
+  future acceleration pack can land without redesigning selection. Further
+  pack-vs-installer splitting remains tied to the update strategy
   (`docs/roadmap.md`).
+  Use `scripts/packaging/fetch-llama-server.ps1 -SkipCuda` only when building
+  a Vulkan/CPU-only artifact.
 - **Windows ML / ONNX (Phase 8):** an `OnnxProvider` hosting ONNX models via
   Windows ML, gaining NPU acceleration on Copilot+ hardware. Worker process
   supervision reuses the `process/` seam.

@@ -33,9 +33,19 @@ pub fn diagnostics_dir() -> PathBuf {
     app_data_root().join("diagnostics")
 }
 
+pub fn generations_dir() -> PathBuf {
+    app_data_root().join("generations")
+}
+
 /// Create all data directories if missing. Called once at startup.
 pub fn ensure_dirs() -> std::io::Result<()> {
-    for dir in [config_dir(), data_dir(), log_dir(), diagnostics_dir()] {
+    for dir in [
+        config_dir(),
+        data_dir(),
+        log_dir(),
+        diagnostics_dir(),
+        generations_dir(),
+    ] {
         std::fs::create_dir_all(dir)?;
     }
     Ok(())
