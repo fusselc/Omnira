@@ -8,13 +8,24 @@ while preserving privacy, modularity, extensibility, and power-user control.
 
 ## Current status
 
-Omnira v0.1.0 Foundation is merged. The app now supports the Windows-first
-local GGUF chat MVP through a managed `llama-server` runtime, with conversation
-persistence and Advanced Diagnostics in place.
+**Shipped on `main`:** Windows local GGUF chat through a managed `llama-server`
+runtime (Vulkan with CPU fallback), model registry, local persistence, Settings,
+Advanced Diagnostics, and a packaged internal alpha (`v0.1.0-alpha`). Maintainer
+Sign-Off is recorded in
+[docs/alpha-readiness-checklist.md](docs/alpha-readiness-checklist.md). Release
+notes: [docs/release-notes-0.1.0-alpha.md](docs/release-notes-0.1.0-alpha.md).
 
-The next milestone is **Alpha Polish**: release-readiness work around onboarding,
-model loading UX, diagnostics, installer testing, screenshots, documentation,
-and release workflow. Nothing in the long-term vision section is implemented yet.
+**Next approved engineering:** Phase 6 -- CUDA acceleration for the **existing
+ChatProvider only** (same Chat UI; accelerator detail in Advanced Diagnostics).
+See [docs/roadmap.md](docs/roadmap.md) and
+[docs/capability-map.md](docs/capability-map.md).
+
+**Deferred:** Phase 7 image generation / Create. Create must not become an
+active visible screen until end-to-end completion criteria are met (see the
+capability map).
+
+Nothing in the long-term vision section below is shipped unless listed under
+**Shipped** above.
 
 ## What the MVP is (current scope)
 
@@ -32,14 +43,25 @@ The MVP does exactly one workflow, and does it well:
 MVP screens: **Chat**, **Models**, **Settings**, and **Advanced Diagnostics**.
 
 The main UI says "Running locally". Technical details -- the selected accelerator
-(Vulkan or CPU), ports, process state, logs -- live in Advanced Diagnostics only.
+(Vulkan or CPU today; CUDA when Phase 6 ships), ports, process state, logs --
+live in Advanced Diagnostics only.
 
-### Explicitly not in the MVP
+### Explicitly not in the MVP (and not shipped)
 
-Model downloads, Hugging Face browsing, image generation, voice, speech-to-text,
-text-to-speech, memory/RAG, document ingestion, agents, tool calling, workflow
-automation, video, music, third-party plugins, CUDA builds, training, fine-tuning,
-and cloud providers. These are documented as future direction only (see below).
+Model downloads, Hugging Face browsing, image generation, multimodal chat or
+file understanding, voice, speech-to-text, text-to-speech, memory/RAG, document
+chat, agents, tool calling, workflow automation, video, music, third-party
+plugins, CUDA builds (until Phase 6), training, fine-tuning, web search, and
+cloud providers. These are documented as future direction only (see below).
+
+## Capability map
+
+For a status index of shipped, next, deferred, later, and unscheduled
+capabilities -- including privacy defaults and agent/tool safety guardrails --
+see **[docs/capability-map.md](docs/capability-map.md)**.
+
+Detailed architecture, ADRs, provider contracts, privacy rules, and the roadmap
+remain authoritative if anything conflicts with that index.
 
 ## How it works
 
@@ -50,8 +72,9 @@ for llama.cpp, Ollama, LM Studio, ComfyUI, or similar tools.
   SQLite persistence, config, and typed IPC. There is no separate backend process
   and no Python runtime.
 - **React + TypeScript + Tailwind CSS** frontend.
-- A bundled, pinned **llama-server** (llama.cpp) runtime in two variants:
+- A bundled, pinned **llama-server** (llama.cpp) runtime in two variants today:
   Vulkan (GPU acceleration on NVIDIA/AMD/Intel) with automatic CPU fallback.
+  Phase 6 will add a CUDA variant for the same ChatProvider.
 - `llama-server` binds to loopback only and requires a per-session API key.
 - Conversations, settings, and the model registry are stored locally under
   `%LOCALAPPDATA%\Omnira\`. Models are referenced in place -- Omnira never copies
@@ -70,13 +93,15 @@ LLM chat and agents, Windows ML/ONNX for vision, audio, and NPU acceleration on
 Copilot+ PCs, and CUDA/TensorRT for heavy GPU workloads like large LLMs,
 diffusion, and video generation -- all behind one calm interface.
 
-That is a direction, not a promise of current functionality. The roadmap and the
-runtime strategy live in [docs/roadmap.md](docs/roadmap.md) and
+That is a direction, not a promise of current functionality. Status and phase
+order live in [docs/capability-map.md](docs/capability-map.md),
+[docs/roadmap.md](docs/roadmap.md), and
 [docs/runtimes-and-routing.md](docs/runtimes-and-routing.md).
 
 ## Documentation
 
 - [Vision](docs/vision.md) -- what Omnira is, who it is for, and what it is not
+- [Capability map](docs/capability-map.md) -- navigation and status index
 - [Architecture](docs/architecture.md) -- desktop shell, Rust core, managed runtime
 - [ADR 0001](docs/adr/0001-rust-tauri-core-orchestrator.md) -- Rust core vs Python sidecar
 - [Alpha readiness checklist](docs/alpha-readiness-checklist.md) -- pre-release verification

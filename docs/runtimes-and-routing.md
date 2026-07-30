@@ -1,9 +1,16 @@
 # Runtimes and Routing -- Long-Term Strategy
 
 This document describes Omnira's long-term multi-runtime strategy. **None of
-this expands MVP scope.** The MVP ships pillar 1 only (llama.cpp/GGUF chat via
-managed llama-server, Vulkan + CPU). This document exists so post-MVP phases
-extend the architecture instead of redesigning it.
+this expands shipped MVP/alpha scope by itself.** The shipped product is
+pillar 1 only (llama.cpp/GGUF chat via managed llama-server, Vulkan + CPU).
+Phase 6 (next approved) adds a CUDA llama-server variant for that same
+ChatProvider. This document exists so post-MVP phases extend the architecture
+instead of redesigning it.
+
+For phase **status** (Shipped / Next approved / Deferred / Later / …), use
+[capability-map.md](capability-map.md) as a navigation index and
+[roadmap.md](roadmap.md) as the authoritative phase table. If this file
+conflicts with ADRs, privacy rules, or provider contracts, those win.
 
 ## 1. The principle
 
@@ -46,9 +53,13 @@ Hardware-aware routing arrives incrementally starting Phase 6: prefer NPU on
 Copilot+ PCs for ONNX workloads, prefer CUDA on NVIDIA for heavy workloads,
 fall back to Vulkan and then CPU.
 
-In the MVP, "routing" degenerates to the fixed Vulkan -> CPU selection for a
-single worker type, implemented so additional backends are additive data, not
-architectural changes.
+**Phase 6 scope (next approved):** for GGUF chat only, prefer CUDA then Vulkan
+then CPU when an NVIDIA GPU is detected. Broader modality routing lands with
+later phases.
+
+In the shipped alpha, "routing" is Vulkan -> CPU for a single worker type,
+implemented so additional backends are additive data, not architectural
+changes.
 
 ## 4. Provider abstraction growth
 
@@ -56,19 +67,25 @@ MVP implements **ChatProvider only** (`LlamaServerChatProvider`; see
 `docs/chat-provider.md`). Post-MVP adds narrow provider interfaces per feature,
 documented now and implemented only when their phase begins:
 
-- `ImageProvider`
-- `VideoProvider`
-- `SpeechToTextProvider`
-- `TextToSpeechProvider`
-- `VisionProvider`
-- `OnnxProvider` (Windows ML path)
-- `EmbeddingProvider`
-- `RagProvider`
-- `ToolAgentProvider`
-- `WorkflowProvider`
-- `MusicAudioProvider`
-- `WebSearchProvider` (network-capable; requires the permission model in
-  `docs/privacy.md` before design)
+- `ImageProvider` -- local image generation (Phase 7; deferred until done criteria)
+- `VideoProvider` -- local video generation (Phase 9)
+- `SpeechToTextProvider` / `TextToSpeechProvider` -- voice (Phase 11)
+- `VisionProvider` -- computer-vision style tasks (with Phase 8 ONNX path);
+  **not** the same as multimodal chat / file understanding in Chat
+- `OnnxProvider` -- Windows ML / ONNX path (Phase 8)
+- `EmbeddingProvider` / `RagProvider` -- memory, embeddings, RAG, document chat
+  (Phase 10)
+- `ToolAgentProvider` / `WorkflowProvider` -- agents and workflows (Phase 10;
+  subject to agent/tool safety guardrails in the roadmap and capability map)
+- `MusicAudioProvider` -- music / audio generation (unscheduled)
+- `WebSearchProvider` -- network-capable; off by default; requires the
+  permission model in `docs/privacy.md` before design
+
+**Multimodal chat and file understanding** (attachments / conversational file
+understanding) is **not** `ImageProvider`, **not** Phase 8 CV tasks, and **not**
+RAG. It has no fixed phase number until a design decision assigns UX and
+runtime. Do not silently extend ChatProvider for it. See
+[capability-map.md](capability-map.md).
 
 Each provider owns spawn/supervise/stream/cancel/error-reporting for its
 worker. The Rust core owns routing, registry, persistence, and IPC.
@@ -87,18 +104,20 @@ flowchart TD
 
 ## 5. Post-MVP phase order
 
-See `docs/roadmap.md` for the full table. Summary: CUDA LLM (6) -> image (7)
--> Windows ML/ONNX (8) -> video (9) -> agents/RAG (10) -> voice (11) ->
-plugin ecosystem (12). CUDA for LLMs is deliberately first: it is the single
-biggest expected performance gap for NVIDIA users on the MVP's Vulkan path.
+See `docs/roadmap.md` for the full table and `docs/capability-map.md` for
+status. Summary: CUDA LLM for ChatProvider (6, next approved) -> image (7,
+deferred) -> Windows ML/ONNX (8) -> video (9) -> agents/RAG/document chat (10)
+-> voice (11) -> plugin ecosystem (12). CUDA for LLMs is deliberately first: it
+is the single biggest expected performance gap for NVIDIA users on the MVP's
+Vulkan path.
 
 ## 6. Integration notes per pillar
 
-- **CUDA llama.cpp (Phase 6):** same `llama-server` supervision model; the
-  CUDA build becomes a third runtime variant with hardware detection choosing
-  CUDA > Vulkan > CPU on NVIDIA machines. Distribution (installer size vs.
-  optional acceleration pack) is decided with the update strategy
-  (`docs/roadmap.md`).
+- **CUDA llama.cpp (Phase 6, next approved):** same `llama-server` supervision
+  model; the CUDA build becomes a third runtime variant with hardware
+  detection choosing CUDA > Vulkan > CPU on NVIDIA machines for **GGUF chat**.
+  Distribution (installer size vs. optional acceleration pack) is decided with
+  the update strategy (`docs/roadmap.md`). This is not TensorRT diffusion.
 - **Windows ML / ONNX (Phase 8):** an `OnnxProvider` hosting ONNX models via
   Windows ML, gaining NPU acceleration on Copilot+ hardware. Worker process
   supervision reuses the `process/` seam.
