@@ -49,6 +49,7 @@
     "resources": {
       "binaries/vulkan": "runtimes/vulkan",
       "binaries/cpu": "runtimes/cpu",
+      "binaries/cuda": "runtimes/cuda",
       "../../../THIRD_PARTY_LICENSES": "THIRD_PARTY_LICENSES",
       "../../../LICENSE": "LICENSE"
     },

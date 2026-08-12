@@ -4,7 +4,7 @@ This file is the canonical repository-wide instruction source for coding agents 
 
 ## Project Scope
 
-- Shipped scope on `main` is Windows-first local GGUF chat only (Vulkan/CPU
+- Shipped scope on `main` is Windows-first local GGUF chat (Vulkan/CPU/CUDA
   managed `llama-server`), plus model registry, local persistence, Settings, and
   Advanced Diagnostics.
 - The runtime stack is Tauri 2, React, TypeScript, Tailwind CSS, and a Rust core.
@@ -24,9 +24,9 @@ Before starting post-alpha work, read:
 The capability map is an index only. If it conflicts with ADRs, provider
 contracts, privacy rules, packaging docs, or the roadmap, those documents win.
 
-**Next approved engineering:** Phase 6 CUDA acceleration for the existing
-ChatProvider only. Do not implement or expose Phase 7+ UI until that phase's
-done criteria are met.
+**Phase 6 (this engineering PR):** CUDA acceleration for the existing
+ChatProvider only. Once on `main`, Diagnostics may name CUDA / Vulkan / CPU.
+Do not implement or expose Phase 7+ UI until that phase's done criteria are met.
 
 **Do not** claim or ship as current features: image generation, Create screen,
 multimodal chat / file understanding, document chat, RAG, agents, voice, video,
@@ -51,8 +51,7 @@ multimodal understanding. That capability requires an explicit design decision
 - Keep deferred and later features out of the active UI until their phase is
   complete by its documented criteria (Phase 7 Create is deferred).
 - Main UI copy should say "Running locally", not "GPU accelerated".
-- Advanced Diagnostics may name runtime variants such as Vulkan or CPU today;
-  CUDA only after Phase 6 lands on `main`.
+- Advanced Diagnostics may name runtime variants such as CUDA, Vulkan, or CPU.
 
 ## Agent / tool safety (future guardrail only)
 

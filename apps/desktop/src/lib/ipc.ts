@@ -95,7 +95,7 @@ export interface Message {
   created_at: string;
 }
 
-export type RuntimeVariant = "vulkan" | "cpu";
+export type RuntimeVariant = "cuda" | "vulkan" | "cpu";
 export type RuntimeState = "stopped" | "starting" | "ready" | "error";
 
 export interface RuntimeStatus {

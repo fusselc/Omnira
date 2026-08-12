@@ -14,6 +14,7 @@ Everything lives under `%LOCALAPPDATA%\Omnira\`:
 | `data\omnira.db` | Structured state | SQLite |
 | `logs\` | Local, prompt-free logs | Rotated text files |
 | `diagnostics\` | Optional export reports | JSON |
+| `runtimes\` | Optional drop-in acceleration packs (CUDA) | Binaries |
 
 `%LOCALAPPDATA%` (not `%APPDATA%`) is deliberate: a local-first app with a
 SQLite database should not ride along with roaming profile sync.

@@ -18,12 +18,11 @@ canonical docs remain authoritative on conflict).
 | **Requires design decision** | Needs explicit UX and/or runtime design before implementation. |
 | **Requires explicit product decision** | Not planned as default product behavior. |
 
-**Current snapshot:** Phases 0–5 / packaged alpha are **Shipped**. Phase 6 CUDA
-for the existing ChatProvider is **Next approved**. Phase 7 image / Create is
-**Deferred** (no active Create screen until end-to-end criteria are met).
-Phases 8–12 are **Later**. See [capability-map.md](capability-map.md) for the
-full index, including multimodal chat / file understanding (requires design
-decision; no phase number yet).
+**Current snapshot:** Phases 0–6 are **Shipped** (Phase 6 = CUDA for the
+existing ChatProvider). Phase 7 image / Create is **Deferred** (no active Create
+screen until end-to-end criteria are met). Phases 8–12 are **Later**. See
+[capability-map.md](capability-map.md) for the full index, including multimodal
+chat / file understanding (requires design decision; no phase number yet).
 
 ## Privacy defaults
 
@@ -111,7 +110,7 @@ and `docs/capability-map.md` for status.
 
 | Phase | Focus | Runtime pillar | New UI (minimum) | Status |
 |---|---|---|---|---|
-| 6 | CUDA llama.cpp for LLMs (existing ChatProvider only) | High-performance GPU (LLM) | None (same Chat; faster path visible in Diagnostics) | **Next approved** |
+| 6 | CUDA llama.cpp for LLMs (existing ChatProvider only) | High-performance GPU (LLM) | None (same Chat; faster path visible in Diagnostics) | **Shipped** |
 | 7 | Image generation | CUDA/TensorRT (diffusion) or managed diffusion worker | Create (image) -- only after end-to-end done criteria | **Deferred** |
 | 8 | Windows ML / ONNX | Windows-native (vision, audio, NPU) | Create (vision/audio tasks) | **Later** |
 | 9 | Video generation | CUDA/TensorRT | Create (video) | **Later** |

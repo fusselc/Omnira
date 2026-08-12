@@ -1,10 +1,10 @@
 # Runtimes and Routing -- Long-Term Strategy
 
 This document describes Omnira's long-term multi-runtime strategy. **None of
-this expands shipped MVP/alpha scope by itself.** The shipped product is
-pillar 1 only (llama.cpp/GGUF chat via managed llama-server, Vulkan + CPU).
-Phase 6 (next approved) adds a CUDA llama-server variant for that same
-ChatProvider. This document exists so post-MVP phases extend the architecture
+this expands shipped MVP/alpha scope by itself.** The shipped ChatProvider uses
+pillar 1 (llama.cpp/GGUF chat via managed llama-server). Phase 6 adds a CUDA
+12.4 llama-server variant for that same ChatProvider (CUDA -> Vulkan -> CPU on
+NVIDIA). This document exists so post-MVP phases extend the architecture
 instead of redesigning it.
 
 For phase **status** (Shipped / Next approved / Deferred / Later / …), use
@@ -25,7 +25,7 @@ not one universal engine.
 
 | Pillar | Engine | Primary use | Status |
 |---|---|---|---|
-| **LLM** | llama.cpp / GGUF (`llama-server`) | Chat, tools/agents, code, reasoning | **MVP ships this pillar only** (Vulkan + CPU; CUDA is the first post-MVP addition) |
+| **LLM** | llama.cpp / GGUF (`llama-server`) | Chat, tools/agents, code, reasoning | **MVP + Phase 6**: Vulkan + CPU + CUDA 12.4 |
 | **Windows-native** | Windows ML / ONNX | Vision (classification, detection, segmentation); audio (ASR, TTS); diffusion components (UNet, VAE, schedulers); NPU acceleration on Copilot+ PCs | Post-MVP; requires `OnnxProvider` / Windows ML integration |
 | **High-performance GPU** | CUDA / TensorRT | Large LLMs (Gemma, Llama 3, DeepSeek); heavy diffusion; video generation | Post-MVP; CUDA llama.cpp variant first, then diffusion/video workers |
 
@@ -53,11 +53,11 @@ Hardware-aware routing arrives incrementally starting Phase 6: prefer NPU on
 Copilot+ PCs for ONNX workloads, prefer CUDA on NVIDIA for heavy workloads,
 fall back to Vulkan and then CPU.
 
-**Phase 6 scope (next approved):** for GGUF chat only, prefer CUDA then Vulkan
-then CPU when an NVIDIA GPU is detected. Broader modality routing lands with
-later phases.
+**Phase 6 (ChatProvider CUDA):** for GGUF chat only, prefer CUDA then Vulkan
+then CPU when an NVIDIA GPU is detected locally (`nvidia-smi`), with no network
+calls. Broader modality routing lands with later phases.
 
-In the shipped alpha, "routing" is Vulkan -> CPU for a single worker type,
+In the pre-Phase-6 alpha, "routing" was Vulkan -> CPU for a single worker type,
 implemented so additional backends are additive data, not architectural
 changes.
 
@@ -105,19 +105,22 @@ flowchart TD
 ## 5. Post-MVP phase order
 
 See `docs/roadmap.md` for the full table and `docs/capability-map.md` for
-status. Summary: CUDA LLM for ChatProvider (6, next approved) -> image (7,
-deferred) -> Windows ML/ONNX (8) -> video (9) -> agents/RAG/document chat (10)
--> voice (11) -> plugin ecosystem (12). CUDA for LLMs is deliberately first: it
-is the single biggest expected performance gap for NVIDIA users on the MVP's
-Vulkan path.
+status. Summary: CUDA LLM for ChatProvider (6) -> image (7, deferred) ->
+Windows ML/ONNX (8) -> video (9) -> agents/RAG/document chat (10) -> voice (11)
+-> plugin ecosystem (12). CUDA for LLMs is deliberately first: it is the single
+biggest expected performance gap for NVIDIA users on the MVP's Vulkan path.
 
 ## 6. Integration notes per pillar
 
-- **CUDA llama.cpp (Phase 6, next approved):** same `llama-server` supervision
-  model; the CUDA build becomes a third runtime variant with hardware
-  detection choosing CUDA > Vulkan > CPU on NVIDIA machines for **GGUF chat**.
-  Distribution (installer size vs. optional acceleration pack) is decided with
-  the update strategy (`docs/roadmap.md`). This is not TensorRT diffusion.
+- **CUDA llama.cpp (Phase 6):** same `llama-server` supervision model; the
+  CUDA 12.4 build is a third runtime variant. On NVIDIA machines the attempt
+  order is CUDA -> Vulkan -> CPU. Official cudart redistributable DLLs are
+  merged into the cuda folder so a full CUDA Toolkit is not required.
+  Distribution decision for this phase: **bundle CUDA in the NSIS installer**
+  alongside Vulkan/CPU. An optional LocalAppData drop-in at
+  `%LOCALAPPDATA%\Omnira\runtimes\cuda\` is also searched. Use
+  `scripts/packaging/fetch-llama-server.ps1 -SkipCuda` only when building a
+  Vulkan/CPU-only artifact. This is not TensorRT diffusion.
 - **Windows ML / ONNX (Phase 8):** an `OnnxProvider` hosting ONNX models via
   Windows ML, gaining NPU acceleration on Copilot+ hardware. Worker process
   supervision reuses the `process/` seam.

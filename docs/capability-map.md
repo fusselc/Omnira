@@ -36,10 +36,10 @@ Use these exact categories:
 ## Current product snapshot
 
 - **Shipped on `main`:** Windows local GGUF chat; model registry (in-place
-  references); local persistence; settings; Advanced Diagnostics; Vulkan/CPU
+  references); local persistence; settings; Advanced Diagnostics; Vulkan/CPU/CUDA
   managed `llama-server`; packaged alpha (`v0.1.0-alpha`).
-- **Next approved engineering:** Phase 6 CUDA acceleration for the **existing
-  ChatProvider only** (same Chat UI; accelerator detail in Diagnostics).
+- **Next approved engineering:** none beyond completing Phase 6 on `main`. Phase 7
+  Create remains deferred.
 - **Deferred:** Phase 7 `ImageProvider` / Create. Create must **not** become an
   active visible screen until end-to-end criteria are met: generate, see,
   delete, and relaunch to view a local image without a terminal; worker under
@@ -77,7 +77,7 @@ now. When those features are designed:
 | Model registry (in-place GGUF; rename; remove without deleting file) | Shipped | MVP | Registry in Rust / SQLite | No model downloads |
 | Local persistence, settings, diagnostics | Shipped | MVP | Rust core | Prompt-free logs; redacted export |
 | Packaged Windows alpha (NSIS, offline-capable) | Shipped | Phase 5 / `v0.1.0-alpha` | Bundled Vulkan+CPU runtimes | WebView2 prerequisite; unsigned internal alpha |
-| CUDA acceleration for existing ChatProvider | Next approved | Phase 6 | Same `ChatProvider`; CUDA llama-server variant | Same Chat UI; Diagnostics names accelerator; not TensorRT diffusion |
+| CUDA acceleration for existing ChatProvider | Shipped | Phase 6 | Same `ChatProvider`; CUDA llama-server variant | Same Chat UI; Diagnostics names accelerator; not TensorRT diffusion |
 | Image generation (Create) | Deferred | Phase 7 | `ImageProvider`; CUDA/TensorRT or managed diffusion worker | No active Create screen until end-to-end criteria above are met |
 | Windows ML / ONNX / NPU tasks | Later | Phase 8 | `OnnxProvider`; Create vision/audio tasks | Computer-vision / ONNX tasks — not multimodal chat |
 | Video generation | Later | Phase 9 | `VideoProvider`; CUDA/TensorRT | After image path is stable |

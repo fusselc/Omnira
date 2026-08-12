@@ -72,6 +72,7 @@ pub struct Message {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeVariant {
+    Cuda,
     Vulkan,
     Cpu,
 }
@@ -90,9 +91,9 @@ pub enum RuntimeState {
 pub struct RuntimeStatus {
     pub state: RuntimeState,
     pub variant: Option<RuntimeVariant>,
-    /// Human label for Diagnostics only, e.g. "NVIDIA GPU (Vulkan)" or "CPU".
+    /// Human label for Diagnostics only, e.g. "NVIDIA GPU (CUDA)" or "CPU".
     pub accelerator_label: Option<String>,
-    /// Why the CPU fallback engaged, if it did. Diagnostics only.
+    /// Why a preferred accelerator was skipped, if fallback engaged. Diagnostics only.
     pub fallback_reason: Option<String>,
     pub model_id: Option<String>,
     pub port: Option<u16>,

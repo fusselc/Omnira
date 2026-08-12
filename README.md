@@ -9,15 +9,16 @@ while preserving privacy, modularity, extensibility, and power-user control.
 ## Current status
 
 **Shipped on `main`:** Windows local GGUF chat through a managed `llama-server`
-runtime (Vulkan with CPU fallback), model registry, local persistence, Settings,
-Advanced Diagnostics, and a packaged internal alpha (`v0.1.0-alpha`). Maintainer
-Sign-Off is recorded in
-[docs/alpha-readiness-checklist.md](docs/alpha-readiness-checklist.md). Release
-notes: [docs/release-notes-0.1.0-alpha.md](docs/release-notes-0.1.0-alpha.md).
+runtime (CUDA when an NVIDIA GPU is available, otherwise Vulkan, with CPU
+fallback), model registry, local persistence, Settings, Advanced Diagnostics,
+and a packaged internal alpha (`v0.1.0-alpha`). Maintainer Sign-Off is recorded
+in [docs/alpha-readiness-checklist.md](docs/alpha-readiness-checklist.md).
+Release notes:
+[docs/release-notes-0.1.0-alpha.md](docs/release-notes-0.1.0-alpha.md).
 
-**Next approved engineering:** Phase 6 -- CUDA acceleration for the **existing
-ChatProvider only** (same Chat UI; accelerator detail in Advanced Diagnostics).
-See [docs/roadmap.md](docs/roadmap.md) and
+**Next approved engineering:** Phase 7 remains **Deferred** (Create / image)
+until end-to-end completion criteria are met. See
+[docs/roadmap.md](docs/roadmap.md) and
 [docs/capability-map.md](docs/capability-map.md).
 
 **Deferred:** Phase 7 image generation / Create. Create must not become an
@@ -43,16 +44,16 @@ The MVP does exactly one workflow, and does it well:
 MVP screens: **Chat**, **Models**, **Settings**, and **Advanced Diagnostics**.
 
 The main UI says "Running locally". Technical details -- the selected accelerator
-(Vulkan or CPU today; CUDA when Phase 6 ships), ports, process state, logs --
-live in Advanced Diagnostics only.
+(CUDA, Vulkan, or CPU), ports, process state, logs -- live in Advanced
+Diagnostics only.
 
 ### Explicitly not in the MVP (and not shipped)
 
 Model downloads, Hugging Face browsing, image generation, multimodal chat or
 file understanding, voice, speech-to-text, text-to-speech, memory/RAG, document
 chat, agents, tool calling, workflow automation, video, music, third-party
-plugins, CUDA builds (until Phase 6), training, fine-tuning, web search, and
-cloud providers. These are documented as future direction only (see below).
+plugins, training, fine-tuning, web search, and cloud providers. These are
+documented as future direction only (see below).
 
 ## Capability map
 
@@ -72,9 +73,9 @@ for llama.cpp, Ollama, LM Studio, ComfyUI, or similar tools.
   SQLite persistence, config, and typed IPC. There is no separate backend process
   and no Python runtime.
 - **React + TypeScript + Tailwind CSS** frontend.
-- A bundled, pinned **llama-server** (llama.cpp) runtime in two variants today:
-  Vulkan (GPU acceleration on NVIDIA/AMD/Intel) with automatic CPU fallback.
-  Phase 6 will add a CUDA variant for the same ChatProvider.
+- A bundled, pinned **llama-server** (llama.cpp) runtime in three variants:
+  CUDA 12.4 (preferred on NVIDIA), Vulkan (NVIDIA/AMD/Intel), and CPU fallback.
+  Same ChatProvider; accelerator detail stays in Advanced Diagnostics.
 - `llama-server` binds to loopback only and requires a per-session API key.
 - Conversations, settings, and the model registry are stored locally under
   `%LOCALAPPDATA%\Omnira\`. Models are referenced in place -- Omnira never copies
