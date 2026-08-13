@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Send, Square, Trash2, Boxes, Pencil } from "lucide-react";
+import { Plus, Send, Square, Trash2, Boxes, Pencil, AlertTriangle } from "lucide-react";
 import {
   ipc,
   toAppError,
@@ -32,19 +32,23 @@ export function Chat({
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [truncatedNotice, setTruncatedNotice] = useState(false);
   const streamRef = useRef<StreamHandle | null>(null);
   const streamBufferRef = useRef("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const restoredRef = useRef(false);
+  const activeIdRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
 
   // Renaming & Fallback states
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [dismissedFallback, setDismissedFallback] = useState(false);
 
-  const generating = streamingText !== null;
+  const generating = generatingId !== null;
+  const viewingStream = generating && activeId === generatingId;
   const activeConvo = conversations.find((c) => c.id === activeId);
   /** Model tied to the active conversation (persisted), not the live runtime. */
   const conversationModelId = activeConvo?.model_id ?? null;
@@ -70,6 +74,11 @@ export function Chat({
     !conversationModelFileMissing &&
     !conversationModelInvalid &&
     runtime.model_id === dropdownModelId;
+  /** Prefer the core's last_error while the engine is in error; otherwise the local stream/IPC error. */
+  const engineError =
+    runtime.state === "error" ? (runtime.last_error ?? error) : error;
+  const showErrorEmpty =
+    runtime.state === "error" && messages.length === 0 && !viewingStream;
 
   const loadConversations = useCallback(async () => {
     const list = await ipc.listConversations();
@@ -91,6 +100,20 @@ export function Chat({
       if (lastId && list.some((c) => c.id === lastId)) setActiveId(lastId);
     })();
   }, [loadConversations, loadModels]);
+
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      // App close / true unmount: abort so the cancelled path can persist
+      // any partial assistant text (stream-boundary contract).
+      streamRef.current?.cancel();
+    };
+  }, []);
 
   useEffect(() => {
     // Only track selections the user made this session, so the initial null
@@ -195,74 +218,100 @@ export function Chat({
     setError(null);
     setDraft("");
 
-    // Ensure a conversation exists.
-    let convoId = activeId;
-    if (!convoId) {
-      const title = content.length > 48 ? `${content.slice(0, 48)}...` : content;
-      const convo = await ipc.createConversation(title, runtime.model_id);
-      convoId = convo.id;
-      setActiveId(convoId);
-      await loadConversations();
-    } else if (messages.length === 0) {
-      const title = content.length > 48 ? `${content.slice(0, 48)}...` : content;
-      await ipc.renameConversation(convoId, title);
-      await loadConversations();
-    }
-
-    if (dropdownModelId && activeConvo?.model_id !== dropdownModelId) {
-      await ipc.setConversationModel(convoId, dropdownModelId);
-      await loadConversations();
-    }
-
-    // Persist the user message BEFORE streaming (stream-boundary contract).
-    const userMsg = await ipc.addMessage(convoId, "user", content, "complete");
-    const history = [...messages, userMsg];
-    setMessages(history);
-
-    // Truncate against the Rust-provided character budget.
-    let budget = 24000;
+    let persistedUser = false;
     try {
-      budget = (await ipc.chatEndpoint()).context_chars_budget;
-    } catch {
-      // endpoint errors surface below through the stream path
-    }
-    const { messages: wire, truncated } = truncateToBudget(history, budget);
-    setTruncatedNotice(truncated);
-
-    streamBufferRef.current = "";
-    setStreamingText("");
-
-    const persistAssistant = async (
-      text: string,
-      status: "complete" | "interrupted",
-    ) => {
-      if (text.length === 0 && status === "interrupted") {
-        setStreamingText(null);
-        return;
+      // Ensure a conversation exists.
+      let convoId = activeId;
+      if (!convoId) {
+        const title = content.length > 48 ? `${content.slice(0, 48)}...` : content;
+        const convo = await ipc.createConversation(title, runtime.model_id);
+        convoId = convo.id;
+        setActiveId(convoId);
+        await loadConversations();
+      } else if (messages.length === 0) {
+        const title = content.length > 48 ? `${content.slice(0, 48)}...` : content;
+        await ipc.renameConversation(convoId, title);
+        await loadConversations();
       }
-      const saved = await ipc.addMessage(convoId, "assistant", text, status);
-      setMessages((prev) => [...prev, saved]);
-      setStreamingText(null);
-      await loadConversations();
-    };
 
-    streamRef.current = startStream(wire, {
-      onChunk: (delta) => {
-        streamBufferRef.current += delta;
-        setStreamingText(streamBufferRef.current);
-      },
-      onDone: (reason) => {
-        void persistAssistant(
-          streamBufferRef.current,
-          reason === "cancelled" ? "interrupted" : "complete",
-        );
-      },
-      onError: (err) => {
-        // Persist whatever partial content arrived, then surface the error.
-        void persistAssistant(streamBufferRef.current, "interrupted");
-        if (err.code !== "GenerationCancelled") setError(err);
-      },
-    });
+      if (dropdownModelId && activeConvo?.model_id !== dropdownModelId) {
+        await ipc.setConversationModel(convoId, dropdownModelId);
+        await loadConversations();
+      }
+
+      // Persist the user message BEFORE streaming (stream-boundary contract).
+      const userMsg = await ipc.addMessage(convoId, "user", content, "complete");
+      persistedUser = true;
+      const history = [...messages, userMsg];
+      setMessages(history);
+
+      // Truncate against the Rust-provided character budget.
+      let budget = 24000;
+      try {
+        budget = (await ipc.chatEndpoint()).context_chars_budget;
+      } catch {
+        // endpoint errors surface below through the stream path
+      }
+      const { messages: wire, truncated } = truncateToBudget(history, budget);
+      setTruncatedNotice(truncated);
+
+      streamBufferRef.current = "";
+      setGeneratingId(convoId);
+      setStreamingText("");
+
+      const persistAssistant = async (
+        text: string,
+        status: "complete" | "interrupted",
+      ) => {
+        streamRef.current = null;
+        const finishUi = () => {
+          if (!mountedRef.current) return;
+          setStreamingText(null);
+          setGeneratingId(null);
+        };
+        if (text.length === 0 && status === "interrupted") {
+          finishUi();
+          return;
+        }
+        try {
+          await ipc.addMessage(convoId, "assistant", text, status);
+          const listed = await ipc.listMessages(convoId);
+          if (mountedRef.current && activeIdRef.current === convoId) {
+            setMessages(listed);
+          }
+        } catch (e) {
+          if (mountedRef.current) setError(toAppError(e));
+        } finally {
+          finishUi();
+          if (mountedRef.current) await loadConversations();
+        }
+      };
+
+      streamRef.current = startStream(wire, {
+        onChunk: (delta) => {
+          streamBufferRef.current += delta;
+          if (mountedRef.current) setStreamingText(streamBufferRef.current);
+        },
+        onDone: (reason) => {
+          void persistAssistant(
+            streamBufferRef.current,
+            reason === "cancelled" ? "interrupted" : "complete",
+          );
+        },
+        onError: (err) => {
+          // Persist whatever partial content arrived, then surface the error.
+          void persistAssistant(streamBufferRef.current, "interrupted");
+          if (mountedRef.current && err.code !== "GenerationCancelled") {
+            setError(err);
+          }
+        },
+      });
+    } catch (e) {
+      if (!persistedUser) setDraft(content);
+      setError(toAppError(e));
+      setStreamingText(null);
+      setGeneratingId(null);
+    }
   };
 
   const readyModels = models.filter((m) => m.status === "ok");
@@ -327,6 +376,13 @@ export function Chat({
                 />
               ) : (
                 <>
+                  {c.id === generatingId && (
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-primary"
+                      title="Generating a response"
+                      aria-label="Generating a response"
+                    />
+                  )}
                   <span
                     className="flex-1 truncate"
                     onDoubleClick={(e) => startRename(c, e)}
@@ -470,9 +526,12 @@ export function Chat({
           </div>
         )}
 
-        {error && (
+        {engineError && !showErrorEmpty && (
           <div className="px-5 pt-3">
-            <ErrorBanner error={error} onDismiss={() => setError(null)} />
+            <ErrorBanner
+              error={engineError}
+              onDismiss={runtime.state === "error" ? undefined : () => setError(null)}
+            />
           </div>
         )}
 
@@ -480,8 +539,7 @@ export function Chat({
           <div className="px-5 pt-3">
             <div className="flex items-center justify-between rounded-xl border border-accent-warning/30 bg-accent-warning/5 px-4 py-3 text-sm text-zinc-200">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-accent-warning font-semibold">⚡ Performance Note:</span>
-                <span>Running in CPU mode. Responses may be slower because GPU acceleration was unavailable.</span>
+                <span>This model is running in a slower mode. Responses may take longer.</span>
                 <button
                   onClick={onGoToDiagnostics}
                   className="ml-1 text-xs font-semibold text-accent-primary hover:underline"
@@ -503,7 +561,7 @@ export function Chat({
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4">
           {/* Empty states are first-class (docs/design-principles.md) */}
-          {runtime.state === "stopped" && messages.length === 0 && !generating ? (
+          {runtime.state === "stopped" && messages.length === 0 && !viewingStream ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-card text-accent-primary">
                 <Boxes size={26} />
@@ -519,7 +577,7 @@ export function Chat({
                 Choose a model
               </button>
             </div>
-          ) : runtime.state === "starting" && messages.length === 0 && !generating ? (
+          ) : runtime.state === "starting" && messages.length === 0 && !viewingStream ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-card text-accent-warning animate-pulse">
                 <Boxes size={26} />
@@ -529,7 +587,25 @@ export function Chat({
                 This can take up to a minute depending on your computer's performance and the model's size.
               </p>
             </div>
-          ) : messages.length === 0 && !generating ? (
+          ) : showErrorEmpty ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-card text-accent-danger">
+                <AlertTriangle size={26} />
+              </div>
+              <h2 className="text-lg font-medium">
+                {engineError?.message ?? "Omnira's engine is not responding."}
+              </h2>
+              <p className="max-w-sm text-sm text-brand-textMuted">
+                {engineError?.suggested_action ?? "Restart Omnira."}
+              </p>
+              <button
+                onClick={onGoToDiagnostics}
+                className="mt-2 rounded-lg bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-primary/90"
+              >
+                Advanced Diagnostics
+              </button>
+            </div>
+          ) : messages.length === 0 && !viewingStream ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
               <h2 className="text-lg font-medium">Ready when you are</h2>
               <p className="max-w-sm text-sm text-brand-textMuted">
@@ -548,7 +624,7 @@ export function Chat({
               {messages.map((m) => (
                 <MessageBubble key={m.id} message={m} />
               ))}
-              {streamingText !== null && (
+              {viewingStream && streamingText !== null && (
                 <div className="max-w-[85%] self-start rounded-2xl rounded-bl-sm bg-brand-card px-4 py-3">
                   {streamingText === "" ? (
                     <span className="text-sm text-brand-textMuted animate-pulse">
@@ -583,11 +659,13 @@ export function Chat({
                     ? "Restore the model file to continue..."
                     : needsRuntimeReload
                       ? "Load this conversation's model to continue..."
-                      : runtime.state === "ready"
-                        ? "Message your local model..."
-                        : runtime.state === "starting"
-                          ? "Starting model..."
-                          : "Choose a model to start"
+                      : runtime.state === "error"
+                        ? (engineError?.message ?? "Omnira's engine is not responding.")
+                        : runtime.state === "ready"
+                          ? "Message your local model..."
+                          : runtime.state === "starting"
+                            ? "Starting model..."
+                            : "Choose a model to start"
               }
               disabled={!canSend || generating}
               className="flex-1 resize-none rounded-xl border border-brand-border bg-brand-card px-4 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-accent-primary/50 disabled:opacity-60"

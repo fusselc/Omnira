@@ -240,8 +240,42 @@ async fn spawn_variant(
 }
 
 impl RuntimeManager {
+    /// If the managed child has exited after ready, move to `error` with
+    /// `BackendUnavailable`. Cheap `try_wait` only; no watchdog thread.
+    fn reap_if_dead(inner: &mut Inner) {
+        if inner.state != RuntimeState::Ready {
+            return;
+        }
+        if inner.runtime.is_none() {
+            Self::mark_unavailable(inner, "runtime handle missing while ready".into());
+            return;
+        }
+        let waited = inner
+            .runtime
+            .as_mut()
+            .map(|rt| rt.child.try_wait());
+        let detail = match waited {
+            Some(Ok(None)) => return,
+            Some(Ok(Some(status))) => format!("llama-server exited: {status}"),
+            Some(Err(e)) => format!("try_wait: {e}"),
+            None => "runtime handle missing while ready".into(),
+        };
+        Self::mark_unavailable(inner, detail);
+    }
+
+    fn mark_unavailable(inner: &mut Inner, detail: String) {
+        logging::error("runtime.unavailable", &detail);
+        inner.state = RuntimeState::Error;
+        inner.last_error = Some(AppError::new(
+            ErrorCode::BackendUnavailable,
+            Some(detail),
+        ));
+        inner.runtime = None;
+    }
+
     pub fn status(&self) -> RuntimeStatus {
-        let inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        Self::reap_if_dead(&mut inner);
         let rt = inner.runtime.as_ref();
         RuntimeStatus {
             state: inner.state,
@@ -259,9 +293,15 @@ impl RuntimeManager {
     }
 
     pub fn endpoint(&self) -> Result<crate::types::ChatEndpoint, AppError> {
-        let inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        Self::reap_if_dead(&mut inner);
         let rt = inner.runtime.as_ref().ok_or_else(|| {
-            AppError::new(ErrorCode::BackendUnavailable, Some("no runtime running".into()))
+            inner.last_error.clone().unwrap_or_else(|| {
+                AppError::new(
+                    ErrorCode::BackendUnavailable,
+                    Some("no runtime running".into()),
+                )
+            })
         })?;
         Ok(crate::types::ChatEndpoint {
             base_url: format!("http://127.0.0.1:{}", rt.port),

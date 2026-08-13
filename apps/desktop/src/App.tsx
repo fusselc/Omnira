@@ -69,14 +69,18 @@ export default function App() {
     <div className="flex h-full">
       <Sidebar active={screen} onSelect={setScreen} />
       <main className="min-w-0 flex-1">
-        {screen === "chat" && (
+        {/* Keep Chat mounted so an in-flight generation survives screen changes. */}
+        <div
+          className={screen === "chat" ? "h-full" : "hidden"}
+          aria-hidden={screen !== "chat"}
+        >
           <Chat
             runtime={runtime}
             refreshRuntime={refreshRuntime}
             onGoToModels={() => setScreen("models")}
             onGoToDiagnostics={() => setScreen("diagnostics")}
           />
-        )}
+        </div>
         {screen === "models" && (
           <Models runtime={runtime} refreshRuntime={refreshRuntime} />
         )}

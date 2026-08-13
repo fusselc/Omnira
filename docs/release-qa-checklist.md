@@ -29,7 +29,7 @@ Use this checklist to perform final manual QA sweeps before tagging and publishi
 ## 4. CPU Fallback Notice
 - [ ] Force a CPU fallback (e.g. by selecting a model that exceeds GPU memory capacity or running in an environment without Vulkan support).
 - [ ] Verify that a performance notice is displayed in the main Chat experience stating:
-  *"Running in CPU mode. Responses may be slower because GPU acceleration was unavailable."*
+  *"This model is running in a slower mode. Responses may take longer."*
 - [ ] Confirm that the notice is dismissible for the current session.
 - [ ] Click "View details" on the notice and verify it redirects you to the Advanced Diagnostics panel.
 - [ ] Confirm that the notice does not show up when Vulkan/GPU acceleration starts successfully.
