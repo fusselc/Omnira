@@ -625,7 +625,7 @@ export function Chat({
                 <MessageBubble key={m.id} message={m} />
               ))}
               {viewingStream && streamingText !== null && (
-                <div className="max-w-[85%] self-start rounded-2xl rounded-bl-sm bg-brand-card px-4 py-3">
+                <div className="max-w-[85%] select-text self-start rounded-2xl rounded-bl-sm bg-brand-card px-4 py-3">
                   {streamingText === "" ? (
                     <span className="text-sm text-brand-textMuted animate-pulse">
                       Thinking...
@@ -700,13 +700,13 @@ export function Chat({
 function MessageBubble({ message }: { message: Message }) {
   if (message.role === "user") {
     return (
-      <div className="max-w-[85%] self-end whitespace-pre-wrap rounded-2xl rounded-br-sm bg-accent-primary/20 px-4 py-3 text-sm">
+      <div className="max-w-[85%] select-text self-end whitespace-pre-wrap rounded-2xl rounded-br-sm bg-accent-primary/20 px-4 py-3 text-sm">
         {message.content}
       </div>
     );
   }
   return (
-    <div className="max-w-[85%] self-start rounded-2xl rounded-bl-sm bg-brand-card px-4 py-3">
+    <div className="max-w-[85%] select-text self-start rounded-2xl rounded-bl-sm bg-brand-card px-4 py-3">
       <Markdown text={message.content} />
       {message.status === "interrupted" && (
         <p className="mt-1 text-[11px] italic text-zinc-600">
