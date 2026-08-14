@@ -42,9 +42,11 @@ export function Chat({
   const streamRef = useRef<StreamHandle | null>(null);
   const streamBufferRef = useRef("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
   const restoredRef = useRef(false);
   const activeIdRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const [lengthLimitedIds, setLengthLimitedIds] = useState<string[]>([]);
 
   // Renaming & Fallback states
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -137,8 +139,39 @@ export function Chat({
   }, [activeId]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    stickToBottomRef.current = true;
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [activeId]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !stickToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
   }, [messages, streamingText]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (editingId !== null) {
+        e.preventDefault();
+        setEditingId(null);
+        setEditTitle("");
+        return;
+      }
+      if (pendingDelete !== null) {
+        e.preventDefault();
+        setPendingDelete(null);
+        return;
+      }
+      if (generatingId !== null) {
+        e.preventDefault();
+        streamRef.current?.cancel();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [editingId, pendingDelete, generatingId]);
 
   useEffect(() => {
     setDismissedFallback(false);
@@ -286,6 +319,7 @@ export function Chat({
       const persistAssistant = async (
         text: string,
         status: "complete" | "interrupted",
+        lengthLimited = false,
       ) => {
         streamRef.current = null;
         const finishUi = () => {
@@ -298,7 +332,12 @@ export function Chat({
           return;
         }
         try {
-          await ipc.addMessage(convoId, "assistant", text, status);
+          const saved = await ipc.addMessage(convoId, "assistant", text, status);
+          if (lengthLimited) {
+            setLengthLimitedIds((prev) =>
+              prev.includes(saved.id) ? prev : [...prev, saved.id],
+            );
+          }
           const listed = await ipc.listMessages(convoId);
           if (mountedRef.current && activeIdRef.current === convoId) {
             setMessages(listed);
@@ -320,6 +359,7 @@ export function Chat({
           void persistAssistant(
             streamBufferRef.current,
             reason === "cancelled" ? "interrupted" : "complete",
+            reason === "length",
           );
         },
         onError: (err) => {
@@ -620,7 +660,16 @@ export function Chat({
           </div>
         )}
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4">
+        <div
+          ref={scrollRef}
+          onScroll={() => {
+            const el = scrollRef.current;
+            if (!el) return;
+            stickToBottomRef.current =
+              el.scrollHeight - el.scrollTop - el.clientHeight < 64;
+          }}
+          className="flex-1 overflow-y-auto px-5 py-4"
+        >
           {/* Empty states are first-class (docs/design-principles.md) */}
           {runtime.state === "stopped" && messages.length === 0 && !viewingStream ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
@@ -683,7 +732,11 @@ export function Chat({
                 </p>
               )}
               {messages.map((m) => (
-                <MessageBubble key={m.id} message={m} />
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  lengthLimited={lengthLimitedIds.includes(m.id)}
+                />
               ))}
               {viewingStream && streamingText !== null && (
                 <div className="max-w-[85%] select-text self-start rounded-2xl rounded-bl-sm bg-brand-card px-4 py-3">
@@ -758,7 +811,13 @@ export function Chat({
   );
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+  message,
+  lengthLimited = false,
+}: {
+  message: Message;
+  lengthLimited?: boolean;
+}) {
   if (message.role === "user") {
     return (
       <div className="max-w-[85%] select-text self-end whitespace-pre-wrap rounded-2xl rounded-br-sm bg-accent-primary/20 px-4 py-3 text-sm">
@@ -772,6 +831,11 @@ function MessageBubble({ message }: { message: Message }) {
       {message.status === "interrupted" && (
         <p className="mt-1 text-[11px] italic text-zinc-600">
           Generation stopped -- partial response kept.
+        </p>
+      )}
+      {lengthLimited && message.status === "complete" && (
+        <p className="mt-1 text-[11px] italic text-zinc-600">
+          Response reached the length limit.
         </p>
       )}
     </div>
