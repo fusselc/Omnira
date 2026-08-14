@@ -34,7 +34,11 @@ export function Chat({
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [error, setError] = useState<AppError | null>(null);
-  const [truncatedNotice, setTruncatedNotice] = useState(false);
+  const [truncatedForId, setTruncatedForId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: string;
+    stoppedGeneration: boolean;
+  } | null>(null);
   const streamRef = useRef<StreamHandle | null>(null);
   const streamBufferRef = useRef("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -103,6 +107,8 @@ export function Chat({
 
   useEffect(() => {
     activeIdRef.current = activeId;
+    setTruncatedForId((prev) => (prev === activeId ? prev : null));
+    setPendingDelete((prev) => (prev && prev.id !== activeId ? null : prev));
   }, [activeId]);
 
   useEffect(() => {
@@ -166,11 +172,29 @@ export function Chat({
     setActiveId(convo.id);
   };
 
-  const removeConversation = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this conversation? This cannot be undone.")) return;
-    await ipc.deleteConversation(id);
-    if (activeId === id) setActiveId(null);
-    await loadConversations();
+  const cancelPendingDelete = () => {
+    setPendingDelete(null);
+  };
+
+  const confirmDelete = async (id: string) => {
+    setPendingDelete(null);
+    try {
+      await ipc.deleteConversation(id);
+      if (activeIdRef.current === id) setActiveId(null);
+      await loadConversations();
+    } catch (e) {
+      setError(toAppError(e));
+    }
+  };
+
+  const requestDelete = (id: string) => {
+    if (pendingDelete?.id === id) {
+      void confirmDelete(id);
+      return;
+    }
+    const stoppedGeneration = generatingId === id;
+    if (stoppedGeneration) streamRef.current?.cancel();
+    setPendingDelete({ id, stoppedGeneration });
   };
 
   const startRename = (convo: Conversation, e: React.MouseEvent | React.KeyboardEvent) => {
@@ -253,7 +277,7 @@ export function Chat({
         // endpoint errors surface below through the stream path
       }
       const { messages: wire, truncated } = truncateToBudget(history, budget);
-      setTruncatedNotice(truncated);
+      setTruncatedForId(truncated ? convoId : null);
 
       streamBufferRef.current = "";
       setGeneratingId(convoId);
@@ -343,8 +367,17 @@ export function Chat({
               key={c.id}
               tabIndex={0}
               onKeyDown={(e) => {
+                if (e.key === "Escape" && pendingDelete?.id === c.id) {
+                  e.preventDefault();
+                  cancelPendingDelete();
+                  return;
+                }
+                if (e.target !== e.currentTarget) return;
                 if (e.key === "F2" && !generating) {
                   startRename(c, e);
+                } else if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setActiveId(c.id);
                 }
               }}
               className={`group flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50 ${
@@ -361,6 +394,7 @@ export function Chat({
                   onChange={(e) => setEditTitle(e.target.value)}
                   onBlur={() => void saveRename(c.id)}
                   onKeyDown={(e) => {
+                    e.stopPropagation();
                     if (e.key === "Enter") {
                       e.preventDefault();
                       void saveRename(c.id);
@@ -374,6 +408,34 @@ export function Chat({
                   onFocus={(e) => e.target.select()}
                   onClick={(e) => e.stopPropagation()}
                 />
+              ) : pendingDelete?.id === c.id ? (
+                <div
+                  className="flex min-w-0 flex-1 flex-col items-stretch gap-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span className="truncate text-sm">{c.title}</span>
+                  {pendingDelete.stoppedGeneration && (
+                    <span className="text-[10px] text-brand-textMuted">
+                      Generation stopped.
+                    </span>
+                  )}
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void confirmDelete(c.id)}
+                      className="rounded bg-accent-danger px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-accent-danger/90"
+                    >
+                      Click again to delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelPendingDelete}
+                      className="rounded px-1.5 py-0.5 text-[10px] text-brand-textMuted hover:text-zinc-100"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <>
                   {c.id === generatingId && (
@@ -389,10 +451,10 @@ export function Chat({
                   >
                     {c.title}
                   </span>
-                  <span className="text-[10px] text-zinc-600 group-hover:hidden">
+                  <span className="text-[10px] text-zinc-600 group-hover:hidden group-focus-within:hidden">
                     {formatWhen(c.updated_at)}
                   </span>
-                  <div className="hidden shrink-0 items-center gap-1 group-hover:flex">
+                  <div className="hidden shrink-0 items-center gap-1 group-hover:flex group-focus-within:flex">
                     <button
                       onClick={(e) => startRename(c, e)}
                       disabled={generating}
@@ -405,10 +467,9 @@ export function Chat({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        void removeConversation(c.id);
+                        requestDelete(c.id);
                       }}
-                      disabled={generating}
-                      className="rounded p-0.5 text-zinc-500 hover:text-accent-danger disabled:opacity-30"
+                      className="rounded p-0.5 text-zinc-500 hover:text-accent-danger"
                       title="Delete conversation"
                       aria-label="Delete conversation"
                     >
@@ -615,7 +676,7 @@ export function Chat({
             </div>
           ) : (
             <div className="mx-auto flex max-w-3xl flex-col gap-4">
-              {truncatedNotice && (
+              {truncatedForId === activeId && (
                 <p className="text-center text-[11px] text-zinc-600">
                   Earlier messages are not included -- this conversation is
                   longer than the model can read at once.
