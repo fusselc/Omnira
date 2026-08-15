@@ -8,7 +8,7 @@ import type { RuntimeStatus } from "../lib/ipc";
 export function StatusPill({ status }: { status: RuntimeStatus }) {
   const map = {
     ready: { dot: "bg-accent-success", label: "Running locally" },
-    starting: { dot: "bg-accent-warning animate-pulse", label: "Starting model..." },
+    starting: { dot: "bg-accent-warning animate-pulse motion-reduce:animate-none", label: "Starting model..." },
     error: { dot: "bg-accent-danger", label: "Engine problem" },
     stopped: { dot: "bg-zinc-600", label: "No model running" },
   } as const;

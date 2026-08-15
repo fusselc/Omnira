@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-brand-deep: #09090b;
+  --color-brand-card: #18181b;
+  --color-brand-hover: #27272a;
+  --color-brand-border: #3f3f46;
+  --color-brand-text-muted: #a1a1aa;
+  --color-brand-glow: rgba(99, 102, 241, 0.15);
+}
+
 @layer base {
   body {
     @apply bg-brand-deep text-zinc-100 font-sans antialiased overflow-hidden select-none;
@@ -9,7 +18,30 @@
 
   /* Support for light theme */
   .light-theme {
+    --color-brand-deep: #f4f4f5;
+    --color-brand-card: #ffffff;
+    --color-brand-hover: #e4e4e7;
+    --color-brand-border: #d4d4d8;
+    --color-brand-text-muted: #52525b;
+    --color-brand-glow: rgba(99, 102, 241, 0.12);
     @apply bg-zinc-50 text-zinc-900;
+  }
+
+  /* Chat (and shared chrome) uses zinc-100 as primary text; keep it readable on light. */
+  .light-theme .text-zinc-100 {
+    color: #18181b;
+  }
+  .light-theme .hover\:text-zinc-100:hover {
+    color: #18181b;
+  }
+  .light-theme .hover\:text-zinc-200:hover {
+    color: #18181b;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse {
+    animation: none;
   }
 }
 

@@ -420,7 +420,7 @@ export function Chat({
                   setActiveId(c.id);
                 }
               }}
-              className={`group flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50 ${
+              className={`group flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50 focus-visible:ring-offset-1 focus-visible:ring-offset-brand-deep ${
                 c.id === activeId
                   ? "bg-brand-hover text-zinc-100 font-medium"
                   : "text-brand-textMuted hover:bg-brand-hover/60"
@@ -443,7 +443,7 @@ export function Chat({
                       cancelRename();
                     }
                   }}
-                  className="flex-1 rounded border border-accent-primary/60 bg-brand-card px-1 py-0.5 text-sm text-zinc-100 outline-none"
+                  className="flex-1 rounded border border-accent-primary/60 bg-brand-card px-1 py-0.5 text-sm text-zinc-100 outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50"
                   autoFocus
                   onFocus={(e) => e.target.select()}
                   onClick={(e) => e.stopPropagation()}
@@ -536,7 +536,8 @@ export function Chat({
               value={dropdownModelId ?? ""}
               onChange={(e) => e.target.value && void selectModel(e.target.value)}
               disabled={runtime.state === "starting" || generating}
-              className="max-w-56 rounded-lg border border-brand-border bg-brand-card px-3 py-1.5 text-xs text-zinc-100 outline-none focus:border-accent-primary/50"
+              aria-label="Model"
+              className="max-w-56 rounded-lg border border-brand-border bg-brand-card px-3 py-1.5 text-xs text-zinc-100 outline-none focus:border-accent-primary/50 focus-visible:ring-1 focus-visible:ring-accent-primary/50"
             >
               <option value="" disabled>
                 {readyModels.length ? "Choose a model" : "No models added"}
@@ -689,7 +690,7 @@ export function Chat({
             </div>
           ) : runtime.state === "starting" && messages.length === 0 && !viewingStream ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-card text-accent-warning animate-pulse">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-card text-accent-warning animate-pulse motion-reduce:animate-none">
                 <Boxes size={26} />
               </div>
               <h2 className="text-lg font-medium">Starting local model...</h2>
@@ -741,7 +742,7 @@ export function Chat({
               {viewingStream && streamingText !== null && (
                 <div className="max-w-[85%] select-text self-start rounded-2xl rounded-bl-sm bg-brand-card px-4 py-3">
                   {streamingText === "" ? (
-                    <span className="text-sm text-brand-textMuted animate-pulse">
+                    <span className="text-sm text-brand-textMuted animate-pulse motion-reduce:animate-none">
                       Thinking...
                     </span>
                   ) : (
@@ -756,6 +757,13 @@ export function Chat({
         {/* Composer */}
         <footer className="border-t border-brand-border px-5 py-4">
           <div className="mx-auto flex max-w-3xl items-end gap-2">
+            <div aria-live="polite" aria-atomic="true" className="sr-only">
+              {generating
+                ? streamingText
+                  ? "Generating a response"
+                  : "Thinking..."
+                : ""}
+            </div>
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -765,6 +773,7 @@ export function Chat({
                   void send();
                 }
               }}
+              aria-label="Message"
               rows={Math.min(6, Math.max(1, draft.split("\n").length))}
               placeholder={
                 conversationModelUnregistered
@@ -782,12 +791,12 @@ export function Chat({
                             : "Choose a model to start"
               }
               disabled={!canSend || generating}
-              className="flex-1 resize-none rounded-xl border border-brand-border bg-brand-card px-4 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-accent-primary/50 disabled:opacity-60"
+              className="flex-1 resize-none rounded-xl border border-brand-border bg-brand-card px-4 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-accent-primary/50 focus-visible:ring-1 focus-visible:ring-accent-primary/50 disabled:opacity-60"
             />
             {generating ? (
               <button
                 onClick={stopGeneration}
-                className="flex h-11 items-center gap-2 rounded-xl bg-accent-danger px-4 font-medium text-white hover:bg-accent-danger/90 transition-colors"
+                className="flex h-11 items-center gap-2 rounded-xl bg-accent-danger px-4 font-medium text-white hover:bg-accent-danger/90 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50"
                 title="Stop generating"
                 aria-label="Stop generating"
               >
@@ -798,8 +807,9 @@ export function Chat({
               <button
                 onClick={() => void send()}
                 disabled={!canSend || !draft.trim()}
-                className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent-primary text-white hover:bg-accent-primary/90 disabled:opacity-40"
-                title="Send"
+                className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent-primary text-white hover:bg-accent-primary/90 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50"
+                title="Send message"
+                aria-label="Send message"
               >
                 <Send size={16} />
               </button>
