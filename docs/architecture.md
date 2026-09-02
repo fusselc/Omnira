@@ -65,8 +65,15 @@ Module boundaries (in `apps/desktop/src-tauri/src/`):
 - Bundled, pinned llama.cpp `llama-server` Windows builds: **Vulkan** (GPU on
   NVIDIA/AMD/Intel) and **CPU/AVX2** (universal fallback). Vulkan is tried
   first; on health-check failure the core falls back to CPU and records the
-  working variant in config. No CUDA in MVP (first planned post-MVP runtime
+  working variant in config. Once CPU is recorded, later launches start with
+  CPU and skip Vulkan; `RuntimeStatus.fallback_reason` then says so
+  explicitly (prefix `Vulkan skipped:`) and Advanced Diagnostics offers
+  "Try GPU acceleration again", which clears the recorded preference. A CPU
+  runtime therefore always carries a fallback reason -- the UI never shows CPU
+  as if it were the only option. No CUDA in MVP (first planned post-MVP runtime
   addition; see `docs/runtimes-and-routing.md`).
+- `RuntimeStatus.engine_label` names the engine ("llama.cpp") while a runtime
+  is starting or running so the UI can show what is actually executing.
 - Started with `--host 127.0.0.1 --api-key <session-secret> --port <reserved>`.
 - Chat uses the OpenAI-compatible `/v1/chat/completions` endpoint, which applies
   the chat template embedded in GGUF metadata. Omnira never implements prompt
@@ -110,6 +117,23 @@ go through typed Tauri commands backed by the Rust core, never HTTP.
   cleanup), Windows kills the job's processes.
 - Normal shutdown also terminates the child explicitly and waits briefly for
   clean exit.
+- `llama-server` is spawned with the Win32 `CREATE_NO_WINDOW` creation flag
+  and null stdin/stdout. It is a console-subsystem executable; without the flag
+  Windows attaches a fresh console (Windows Terminal on Windows 11) to every
+  spawn attempt -- one per variant and per port-race retry -- and leaves the
+  surviving one open for the life of the process. Users must never see a
+  console for the engine.
+- stderr is piped into a bounded in-memory tail (4 KiB) only while the runtime
+  is starting; it is folded into `RuntimeFailedToStart` / the fallback reason
+  so Advanced Diagnostics can say *why* a variant failed. Capture stops the
+  moment `/health` succeeds and the pipe is drained and discarded afterwards,
+  so request-time logs (which could reference prompts) are never retained.
+- A start can be cancelled: `stop_runtime` during `starting` aborts the health
+  wait, kills the child, and leaves the runtime `stopped`. A newer
+  `start_runtime` supersedes an older in-flight one the same way.
+- Removing a model from the registry unloads the engine if that model is the
+  one loaded, so a conversation can never keep generating against a model the
+  user removed.
 
 ## 5. Port allocation
 

@@ -89,6 +89,9 @@ pub enum RuntimeState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeStatus {
     pub state: RuntimeState,
+    /// Name of the engine behind the runtime ("llama.cpp") while one is
+    /// starting or running; `None` when nothing is loaded.
+    pub engine_label: Option<String>,
     pub variant: Option<RuntimeVariant>,
     /// Human label for Diagnostics only, e.g. "NVIDIA GPU (Vulkan)" or "CPU".
     pub accelerator_label: Option<String>,

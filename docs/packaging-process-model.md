@@ -12,14 +12,31 @@ One installed application, one process tree:
 2. On model selection, the Rust core reserves a free loopback port, generates a
    per-session api-key in memory, and spawns the bundled `llama-server` as a
    direct child process with `--host 127.0.0.1 --port <port> --api-key <key>`.
+   The child is created with `CREATE_NO_WINDOW` (no console window, ever) and
+   null stdin/stdout; there is no `cmd.exe` wrapper and no helper process.
 3. The child is assigned to a Windows Job Object with
    `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` at spawn time, guaranteeing cleanup even
    if Omnira crashes or is force-killed.
 4. The Rust core polls `/health` until the runtime is ready, then enables chat.
-5. Selecting a different model (or quitting) stops the child; quitting Omnira
-   shuts down the entire tree.
+5. Selecting a different model, pressing **Unload model** / **Cancel loading**
+   (Chat header or Models screen), removing the loaded model from Omnira, or
+   quitting stops the child; quitting Omnira shuts down the entire tree.
 
-No fixed ports. No port files. No orphaned processes.
+No fixed ports. No port files. No orphaned processes. No visible consoles.
+
+### Verifying the hidden-console behavior on Windows
+
+CI runs on Linux and cannot exercise Win32 process creation, so verify by hand
+on a Windows machine after building or installing:
+
+1. Load a model from the Models screen. No console or Windows Terminal window
+   may appear at any point, including during a Vulkan -> CPU fallback.
+2. In Task Manager, `llama-server.exe` appears under `omnira.exe` (one instance
+   per loaded model) and has no associated console window.
+3. Press **Unload model** (Chat header) or **Cancel loading** while a model is
+   still starting: `llama-server.exe` disappears from Task Manager within a
+   second and Chat shows the no-model empty state.
+4. Remove the loaded model on the Models screen: same result as step 3.
 
 ## 2. Bundled runtime
 
