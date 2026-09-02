@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Omnira app icon source. Matches the in-app BrandMark monogram: an indigo to
+  purple "O" ring on the dark brand surface.
+
+  Regenerate every raster/ICO/ICNS in this folder from this file with:
+    cd apps/desktop && npx tauri icon src-tauri/icons/omnira-icon.svg -o src-tauri/icons
+  then delete the generated android/ and ios/ folders (desktop only).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f1f26"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#818cf8"/>
+      <stop offset="0.55" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#6366f1" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#6366f1" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="url(#surface)"/>
+  <rect x="14" y="14" width="996" height="996" rx="212" ry="212" fill="none" stroke="#6366f1" stroke-opacity="0.28" stroke-width="12"/>
+
+  <circle cx="512" cy="512" r="400" fill="url(#glow)"/>
+
+  <circle cx="512" cy="512" r="262" fill="none" stroke="url(#ring)" stroke-width="104" stroke-linecap="round"/>
+  <circle cx="512" cy="512" r="262" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="18"/>
+
+  <circle cx="512" cy="512" r="64" fill="url(#ring)"/>
+</svg>
