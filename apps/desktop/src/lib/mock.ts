@@ -54,7 +54,7 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
       return;
 
     case "list_models":
-      return models;
+      return [...models];
     case "add_model": {
       const path = args!.path as string;
       const m: ModelEntry = {
