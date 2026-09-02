@@ -84,7 +84,7 @@ export function Diagnostics() {
 
       {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
 
-      <DiagnosticsRuntimePanel runtime={snap.runtime} models={models} />
+      <DiagnosticsRuntimePanel runtime={snap.runtime} models={models} onError={setError} />
       <DiagnosticsLocalApiPanel port={snap.runtime.port} state={snap.runtime.state} />
 
       <section className="rounded-xl border border-brand-border bg-brand-card p-4">
@@ -105,7 +105,7 @@ export function Diagnostics() {
       {displayErrors.length > 0 && (
         <section className="rounded-xl border border-brand-border bg-brand-card p-4">
           <h2 className="mb-2 text-sm font-semibold">Recent runtime errors</h2>
-          <ul className="space-y-2">
+          <ul className="space-y-2 select-text">
             {displayErrors.map((e, i) => (
               <li key={i} className="text-xs">
                 <span className="font-mono text-accent-danger">{e.code}</span>{" "}
@@ -124,7 +124,7 @@ export function Diagnostics() {
         <p className="mb-2 text-xs text-zinc-600">
           Logs never contain your prompts or responses.
         </p>
-        <pre className="min-h-32 flex-1 overflow-auto rounded-lg bg-brand-deep p-3 font-mono text-[11px] leading-relaxed text-zinc-400">
+        <pre className="min-h-32 flex-1 select-text overflow-auto rounded-lg bg-brand-deep p-3 font-mono text-[11px] leading-relaxed text-zinc-400">
           {snap.recent_log_lines.length
             ? snap.recent_log_lines.join("\n")
             : "No log entries yet."}
@@ -176,7 +176,7 @@ function PathRow({
   return (
     <div>
       <dt className="text-xs text-brand-textMuted">{label}</dt>
-      <dd className={`mt-0.5 break-all ${mono ? "font-mono text-xs text-zinc-500" : ""}`}>
+      <dd className={`mt-0.5 select-text break-all ${mono ? "font-mono text-xs text-zinc-500" : ""}`}>
         {value}
       </dd>
     </div>

@@ -10,17 +10,22 @@ import {
   type RuntimeStatus,
 } from "../lib/ipc";
 import { startStream, truncateToBudget, type StreamHandle } from "../lib/chat";
+import { sendBlocker } from "../lib/chatGuards";
 import { Markdown } from "../lib/markdown";
 import { StatusPill } from "../components/StatusPill";
+import { UnloadRuntimeButton } from "../components/UnloadRuntimeButton";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { formatWhen } from "../lib/format";
 
 export function Chat({
+  visible = true,
   runtime,
   refreshRuntime,
   onGoToModels,
   onGoToDiagnostics,
 }: {
+  /** Chat stays mounted while hidden; this flags when it is on screen. */
+  visible?: boolean;
   runtime: RuntimeStatus;
   refreshRuntime: () => Promise<void>;
   onGoToModels: () => void;
@@ -73,13 +78,16 @@ export function Chat({
     conversationModel?.status === "ok" &&
     conversationModelId !== runtime.model_id &&
     !generating;
-  const canSend =
+  /**
+   * The engine reports a model that is no longer in the registry (removed
+   * while loaded) or whose file is gone. Nothing may be sent to it.
+   */
+  const loadedModelUnavailable =
     runtime.state === "ready" &&
-    !needsRuntimeReload &&
-    !conversationModelUnregistered &&
-    !conversationModelFileMissing &&
-    !conversationModelInvalid &&
-    runtime.model_id === dropdownModelId;
+    runtime.model_id != null &&
+    runtimeModel?.status !== "ok";
+  const canSend =
+    sendBlocker({ runtime, models, conversationModelId, generating }) === null;
   /** Prefer the core's last_error while the engine is in error; otherwise the local stream/IPC error. */
   const engineError =
     runtime.state === "error" ? (runtime.last_error ?? error) : error;
@@ -106,6 +114,15 @@ export function Chat({
       if (lastId && list.some((c) => c.id === lastId)) setActiveId(lastId);
     })();
   }, [loadConversations, loadModels]);
+
+  // Chat is never unmounted, so registry changes made on Models (remove,
+  // rename, add) and engine changes must be picked up when the user comes
+  // back or when the loaded model changes underneath us.
+  useEffect(() => {
+    if (!visible) return;
+    void loadModels();
+    void loadConversations();
+  }, [visible, runtime.model_id, runtime.state, loadModels, loadConversations]);
 
   useEffect(() => {
     activeIdRef.current = activeId;
@@ -302,13 +319,11 @@ export function Chat({
       const history = [...messages, userMsg];
       setMessages(history);
 
-      // Truncate against the Rust-provided character budget.
-      let budget = 24000;
-      try {
-        budget = (await ipc.chatEndpoint()).context_chars_budget;
-      } catch {
-        // endpoint errors surface below through the stream path
-      }
+      // The core is the authority on whether an engine is actually up: this
+      // fails with BackendUnavailable when llama-server died or was unloaded,
+      // so nothing is ever streamed to a model that is not loaded. It also
+      // supplies the character budget used for truncation.
+      const budget = (await ipc.chatEndpoint()).context_chars_budget;
       const { messages: wire, truncated } = truncateToBudget(history, budget);
       setTruncatedForId(truncated ? convoId : null);
 
@@ -375,7 +390,15 @@ export function Chat({
       setError(toAppError(e));
       setStreamingText(null);
       setGeneratingId(null);
+      // The engine may have gone away; show its real state right now.
+      void refreshRuntime();
     }
+  };
+
+  const unloadRuntime = () => {
+    // Free the in-flight stream first so the cancelled path persists any
+    // partial answer before the engine disappears.
+    streamRef.current?.cancel();
   };
 
   const readyModels = models.filter((m) => m.status === "ok");
@@ -561,8 +584,30 @@ export function Chat({
               ))}
             </select>
             <StatusPill status={runtime} />
+            <UnloadRuntimeButton
+              runtime={runtime}
+              refreshRuntime={refreshRuntime}
+              onBeforeStop={unloadRuntime}
+              onError={setError}
+              compact
+            />
           </div>
         </header>
+
+        {loadedModelUnavailable && !conversationModelUnregistered && (
+          <div className="mx-5 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent-danger/30 bg-accent-danger/10 px-4 py-3 text-sm">
+            <p className="text-brand-textMuted">
+              The loaded model is no longer available in Omnira, so chat is
+              paused. Choose another model, or unload the engine.
+            </p>
+            <button
+              onClick={onGoToModels}
+              className="shrink-0 rounded-lg border border-brand-border px-3 py-1.5 text-xs font-medium hover:bg-brand-hover"
+            >
+              Go to Models
+            </button>
+          </div>
+        )}
 
         {conversationModelUnregistered && (
           <div className="mx-5 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent-danger/30 bg-accent-danger/10 px-4 py-3 text-sm">
@@ -637,11 +682,14 @@ export function Chat({
           </div>
         )}
 
-        {runtime.state === "ready" && runtime.fallback_reason && !dismissedFallback && (
+        {runtime.state === "ready" && runtime.variant === "cpu" && runtime.fallback_reason && !dismissedFallback && (
           <div className="px-5 pt-3">
             <div className="flex items-center justify-between rounded-xl border border-accent-warning/30 bg-accent-warning/5 px-4 py-3 text-sm text-zinc-200">
               <div className="flex flex-wrap items-center gap-2">
-                <span>This model is running in a slower mode. Responses may take longer.</span>
+                <span>
+                  Running on CPU. Responses may be slower than with GPU
+                  acceleration.
+                </span>
                 <button
                   onClick={onGoToDiagnostics}
                   className="ml-1 text-xs font-semibold text-accent-primary hover:underline"
@@ -782,6 +830,8 @@ export function Chat({
                     ? "Restore the model file to continue..."
                     : needsRuntimeReload
                       ? "Load this conversation's model to continue..."
+                      : loadedModelUnavailable
+                        ? "The loaded model was removed. Choose another model..."
                       : runtime.state === "error"
                         ? (engineError?.message ?? "Omnira's engine is not responding.")
                         : runtime.state === "ready"
