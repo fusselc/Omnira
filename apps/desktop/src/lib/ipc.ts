@@ -100,6 +100,8 @@ export type RuntimeState = "stopped" | "starting" | "ready" | "error";
 
 export interface RuntimeStatus {
   state: RuntimeState;
+  /** Engine name ("llama.cpp") while starting or running; null when idle. */
+  engine_label: string | null;
   variant: RuntimeVariant | null;
   accelerator_label: string | null;
   fallback_reason: string | null;

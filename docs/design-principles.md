@@ -24,10 +24,16 @@ Power exists, but it waits to be asked for.
   "GPU accelerated" or otherwise imply CUDA-class performance -- the MVP's
   Vulkan path measurably underperforms CUDA on NVIDIA hardware for prompt
   processing, and copy must not overpromise.
-- Advanced Diagnostics is the only place that names the accelerator:
-  "Accelerator: NVIDIA GPU (Vulkan)", "Accelerator: AMD GPU (Vulkan)",
-  "Accelerator: Intel GPU (Vulkan)", or "Accelerator: CPU", plus the fallback
-  reason if any.
+- The main UI **does** name the engine honestly: the status pill reads
+  "Running locally · llama.cpp" so it never looks like nothing is running, and
+  it never claims an engine Omnira does not ship (no ONNX, no CUDA in MVP).
+- The main UI may say the engine is **on CPU** when it is (the dismissible
+  "Running on CPU" notice), because hiding a slower mode would be dishonest.
+  It does not otherwise name GPU vendors or backends.
+- Advanced Diagnostics is the place that names the accelerator in full:
+  "GPU acceleration (Vulkan)" or "CPU mode", plus the fallback reason
+  (including the engine's startup output when a variant failed) and the
+  "Try GPU acceleration again" control.
 - Plain language over jargon everywhere. "Model file is missing" beats
   "registry dereference failed".
 - Privacy language is concrete: "Nothing leaves your computer", not marketing
@@ -55,9 +61,11 @@ copy. Baseline set (refined during Phase 2 copy review):
 ## 4. Screens
 
 **Chat:** conversation list, current thread, composer, model selector,
-streaming response, stop button, "Running locally" indicator, friendly
-no-model empty state. A subtle notice appears when older messages were
-truncated from context.
+streaming response, stop button, "Running locally · llama.cpp" indicator, an
+"Unload model" / "Cancel loading" control beside it, friendly no-model empty
+state. Message text is selectable so users can copy replies. A subtle notice
+appears when older messages were truncated from context. Chat stays mounted
+while other screens are shown so an in-flight response keeps streaming.
 
 **Models:** add/select local `.gguf`; friendly name, file path, file size,
 last used, status indicator; missing-file warning; "Remove from Omnira" action

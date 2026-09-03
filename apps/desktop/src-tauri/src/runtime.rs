@@ -7,10 +7,12 @@
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rand::Rng;
+use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 
 use crate::errors::{AppError, ErrorCode};
@@ -30,6 +32,19 @@ const SPAWN_ATTEMPTS: u32 = 3;
 /// Health polling.
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(120);
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(300);
+/// How much of llama-server's startup stderr is kept for the fallback reason
+/// / Advanced Diagnostics when a variant fails to come up. Capture stops the
+/// moment the runtime is healthy so request-time logs are never retained.
+const STDERR_TAIL_BYTES: usize = 4096;
+/// The engine behind every managed runtime in MVP (docs/runtimes-and-routing.md
+/// pillar 1). Shown honestly in the UI so users can see what is running.
+pub const ENGINE_LABEL: &str = "llama.cpp";
+
+/// Win32 `CREATE_NO_WINDOW`: the child gets no console of its own. Without it a
+/// console-subsystem child (llama-server.exe) spawned from a GUI process opens
+/// a visible console window (Windows Terminal on Windows 11) for every attempt.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub struct ManagedRuntime {
     child: Child,
@@ -39,6 +54,45 @@ pub struct ManagedRuntime {
     pub model_id: String,
     pub context_size: u64,
     pub fallback_reason: Option<String>,
+}
+
+/// Cooperative cancellation for an in-progress `start`. Cloned into the
+/// health-wait loop; `RuntimeManager` keeps the current one so `stop_runtime`
+/// can abort a load that has not become ready yet.
+#[derive(Clone, Default)]
+pub struct StartCancel(Arc<AtomicBool>);
+
+impl StartCancel {
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+
+    fn same_as(&self, other: &StartCancel) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+/// Result of a cancellable start.
+pub enum StartOutcome {
+    Ready(ManagedRuntime),
+    /// `StartCancel::cancel` was called before the runtime became healthy. Any
+    /// spawned child has already been killed and reaped.
+    Cancelled,
+}
+
+enum StartFailure {
+    Cancelled,
+    Error(AppError),
+}
+
+impl From<AppError> for StartFailure {
+    fn from(e: AppError) -> Self {
+        StartFailure::Error(e)
+    }
 }
 
 #[derive(Default)]
@@ -51,6 +105,8 @@ struct Inner {
     runtime: Option<ManagedRuntime>,
     state: RuntimeState,
     last_error: Option<AppError>,
+    /// Cancellation handle for the start currently in flight, if any.
+    pending_start: Option<StartCancel>,
 }
 
 impl Default for RuntimeState {
@@ -131,20 +187,110 @@ fn generate_api_key() -> String {
         .collect()
 }
 
-async fn wait_healthy(port: u16, child: &mut Child) -> Result<(), AppError> {
+/// Bounded tail of the child's stderr, kept only while the runtime is
+/// starting. The reader task drains the pipe for the child's whole lifetime
+/// (a full pipe would block llama-server) but discards everything once
+/// `stop_capturing` is called, so prompts and responses never land here.
+#[derive(Clone, Default)]
+struct StderrTail {
+    bytes: Arc<Mutex<Vec<u8>>>,
+    capturing: Arc<AtomicBool>,
+}
+
+impl StderrTail {
+    fn attach(child: &mut Child) -> Self {
+        let tail = Self {
+            bytes: Arc::new(Mutex::new(Vec::new())),
+            capturing: Arc::new(AtomicBool::new(true)),
+        };
+        if let Some(mut stderr) = child.stderr.take() {
+            let sink = tail.clone();
+            tokio::spawn(async move {
+                let mut buf = [0u8; 1024];
+                loop {
+                    match stderr.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => sink.push(&buf[..n]),
+                    }
+                }
+            });
+        }
+        tail
+    }
+
+    fn push(&self, chunk: &[u8]) {
+        if !self.capturing.load(Ordering::Relaxed) {
+            return;
+        }
+        let mut bytes = self.bytes.lock().unwrap_or_else(|p| p.into_inner());
+        bytes.extend_from_slice(chunk);
+        if bytes.len() > STDERR_TAIL_BYTES {
+            let excess = bytes.len() - STDERR_TAIL_BYTES;
+            bytes.drain(..excess);
+        }
+    }
+
+    fn stop_capturing(&self) {
+        self.capturing.store(false, Ordering::Relaxed);
+        self.bytes
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clear();
+    }
+
+    /// Last few non-empty lines, single-spaced, for an error detail string.
+    fn summary(&self) -> Option<String> {
+        let bytes = self.bytes.lock().unwrap_or_else(|p| p.into_inner());
+        let text = String::from_utf8_lossy(&bytes);
+        let lines: Vec<&str> = text
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
+        if lines.is_empty() {
+            return None;
+        }
+        let start = lines.len().saturating_sub(8);
+        Some(lines[start..].join(" | "))
+    }
+}
+
+fn with_stderr(detail: String, tail: &StderrTail) -> String {
+    match tail.summary() {
+        Some(stderr) => format!("{detail}; stderr: {stderr}"),
+        None => detail,
+    }
+}
+
+async fn wait_healthy(
+    port: u16,
+    child: &mut Child,
+    stderr: &StderrTail,
+    cancel: &StartCancel,
+) -> Result<(), StartFailure> {
     let url = format!("http://127.0.0.1:{port}/health");
     let client = reqwest::Client::new();
     let deadline = tokio::time::Instant::now() + HEALTH_TIMEOUT;
 
     loop {
+        if cancel.is_cancelled() {
+            return Err(StartFailure::Cancelled);
+        }
+
         // Detect early exit (bind race, model load failure, OOM...).
         if let Some(status) = child.try_wait().map_err(|e| {
             AppError::new(ErrorCode::RuntimeFailedToStart, Some(format!("try_wait: {e}")))
         })? {
+            // Give the reader task a moment to flush the final stderr lines.
+            tokio::time::sleep(Duration::from_millis(50)).await;
             return Err(AppError::new(
                 ErrorCode::RuntimeFailedToStart,
-                Some(format!("llama-server exited during startup: {status}")),
-            ));
+                Some(with_stderr(
+                    format!("llama-server exited during startup: {status}"),
+                    stderr,
+                )),
+            )
+            .into());
         }
 
         if let Ok(resp) = client.get(&url).send().await {
@@ -156,11 +302,46 @@ async fn wait_healthy(port: u16, child: &mut Child) -> Result<(), AppError> {
         if tokio::time::Instant::now() >= deadline {
             return Err(AppError::new(
                 ErrorCode::RuntimeFailedToStart,
-                Some("health check timed out".to_string()),
-            ));
+                Some(with_stderr("health check timed out".to_string(), stderr)),
+            )
+            .into());
         }
         tokio::time::sleep(HEALTH_POLL_INTERVAL).await;
     }
+}
+
+/// Build the llama-server command line. Kept separate so the flags can be
+/// unit-tested without spawning anything.
+fn server_args(port: u16, api_key: &str, model_path: &str, ctx_size: u64) -> Vec<String> {
+    vec![
+        "--host".into(),
+        "127.0.0.1".into(),
+        "--port".into(),
+        port.to_string(),
+        "--api-key".into(),
+        api_key.to_string(),
+        "--model".into(),
+        model_path.to_string(),
+        "--ctx-size".into(),
+        ctx_size.to_string(),
+    ]
+}
+
+fn build_command(binary: &PathBuf, args: &[String]) -> Command {
+    let mut cmd = Command::new(binary);
+    cmd.args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
+async fn kill_and_reap(child: &mut Child) {
+    let _ = child.start_kill();
+    let _ = child.wait().await;
 }
 
 async fn spawn_variant(
@@ -169,10 +350,15 @@ async fn spawn_variant(
     model_path: &str,
     model_id: &str,
     ctx_size: u64,
-) -> Result<ManagedRuntime, AppError> {
+    cancel: &StartCancel,
+) -> Result<ManagedRuntime, StartFailure> {
     let mut last_err: Option<AppError> = None;
 
     for attempt in 1..=SPAWN_ATTEMPTS {
+        if cancel.is_cancelled() {
+            return Err(StartFailure::Cancelled);
+        }
+
         let port = reserve_port()?;
         let api_key = generate_api_key();
 
@@ -181,39 +367,27 @@ async fn spawn_variant(
             &format!("variant={variant:?} attempt={attempt} port={port}"),
         );
 
-        let mut child = Command::new(binary)
-            .arg("--host")
-            .arg("127.0.0.1")
-            .arg("--port")
-            .arg(port.to_string())
-            .arg("--api-key")
-            .arg(&api_key)
-            .arg("--model")
-            .arg(model_path)
-            .arg("--ctx-size")
-            .arg(ctx_size.to_string())
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| {
-                AppError::new(ErrorCode::RuntimeFailedToStart, Some(format!("spawn: {e}")))
-            })?;
+        let args = server_args(port, &api_key, model_path, ctx_size);
+        let mut child = build_command(binary, &args).spawn().map_err(|e| {
+            AppError::new(ErrorCode::RuntimeFailedToStart, Some(format!("spawn: {e}")))
+        })?;
+        let stderr = StderrTail::attach(&mut child);
 
         // Assign to the kill-on-close Job Object immediately after spawn.
         if let Some(pid) = child.id() {
             if let Err(e) = process::supervise(pid) {
-                let _ = child.start_kill();
+                kill_and_reap(&mut child).await;
                 return Err(AppError::new(
                     ErrorCode::RuntimeFailedToStart,
                     Some(format!("job object assignment failed: {e}")),
-                ));
+                )
+                .into());
             }
         }
 
-        match wait_healthy(port, &mut child).await {
+        match wait_healthy(port, &mut child, &stderr, cancel).await {
             Ok(()) => {
+                stderr.stop_capturing();
                 logging::info("runtime.ready", &format!("variant={variant:?} port={port}"));
                 return Ok(ManagedRuntime {
                     child,
@@ -225,31 +399,77 @@ async fn spawn_variant(
                     fallback_reason: None,
                 });
             }
-            Err(e) => {
-                let _ = child.start_kill();
-                let _ = child.wait().await;
-                logging::error("runtime.spawn_failed", &format!("variant={variant:?} attempt={attempt} code={:?}", e.code));
+            Err(StartFailure::Cancelled) => {
+                kill_and_reap(&mut child).await;
+                logging::info("runtime.start_cancelled", &format!("variant={variant:?} port={port}"));
+                return Err(StartFailure::Cancelled);
+            }
+            Err(StartFailure::Error(e)) => {
+                kill_and_reap(&mut child).await;
+                logging::error(
+                    "runtime.spawn_failed",
+                    &format!(
+                        "variant={variant:?} attempt={attempt} code={:?} detail={}",
+                        e.code,
+                        e.detail.as_deref().unwrap_or("")
+                    ),
+                );
                 last_err = Some(e);
             }
         }
     }
 
-    Err(last_err.unwrap_or_else(|| {
-        AppError::new(ErrorCode::RuntimeFailedToStart, Some("spawn attempts exhausted".into()))
-    }))
+    Err(last_err
+        .unwrap_or_else(|| {
+            AppError::new(ErrorCode::RuntimeFailedToStart, Some("spawn attempts exhausted".into()))
+        })
+        .into())
 }
 
 impl RuntimeManager {
+    /// If the managed child has exited after ready, move to `error` with
+    /// `BackendUnavailable`. Cheap `try_wait` only; no watchdog thread.
+    fn reap_if_dead(inner: &mut Inner) {
+        if inner.state != RuntimeState::Ready {
+            return;
+        }
+        if inner.runtime.is_none() {
+            Self::mark_unavailable(inner, "runtime handle missing while ready".into());
+            return;
+        }
+        let waited = inner
+            .runtime
+            .as_mut()
+            .map(|rt| rt.child.try_wait());
+        let detail = match waited {
+            Some(Ok(None)) => return,
+            Some(Ok(Some(status))) => format!("llama-server exited: {status}"),
+            Some(Err(e)) => format!("try_wait: {e}"),
+            None => "runtime handle missing while ready".into(),
+        };
+        Self::mark_unavailable(inner, detail);
+    }
+
+    fn mark_unavailable(inner: &mut Inner, detail: String) {
+        logging::error("runtime.unavailable", &detail);
+        inner.state = RuntimeState::Error;
+        inner.last_error = Some(AppError::new(
+            ErrorCode::BackendUnavailable,
+            Some(detail),
+        ));
+        inner.runtime = None;
+    }
+
     pub fn status(&self) -> RuntimeStatus {
-        let inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        Self::reap_if_dead(&mut inner);
         let rt = inner.runtime.as_ref();
+        let engine_active = rt.is_some() || inner.state == RuntimeState::Starting;
         RuntimeStatus {
             state: inner.state,
+            engine_label: engine_active.then(|| ENGINE_LABEL.to_string()),
             variant: rt.map(|r| r.variant),
-            accelerator_label: rt.map(|r| match r.variant {
-                RuntimeVariant::Vulkan => "GPU (Vulkan)".to_string(),
-                RuntimeVariant::Cpu => "CPU".to_string(),
-            }),
+            accelerator_label: rt.map(|r| accelerator_label(r.variant).to_string()),
             fallback_reason: rt.and_then(|r| r.fallback_reason.clone()),
             model_id: rt.map(|r| r.model_id.clone()),
             port: rt.map(|r| r.port),
@@ -259,9 +479,15 @@ impl RuntimeManager {
     }
 
     pub fn endpoint(&self) -> Result<crate::types::ChatEndpoint, AppError> {
-        let inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        Self::reap_if_dead(&mut inner);
         let rt = inner.runtime.as_ref().ok_or_else(|| {
-            AppError::new(ErrorCode::BackendUnavailable, Some("no runtime running".into()))
+            inner.last_error.clone().unwrap_or_else(|| {
+                AppError::new(
+                    ErrorCode::BackendUnavailable,
+                    Some("no runtime running".into()),
+                )
+            })
         })?;
         Ok(crate::types::ChatEndpoint {
             base_url: format!("http://127.0.0.1:{}", rt.port),
@@ -270,32 +496,75 @@ impl RuntimeManager {
         })
     }
 
-    pub fn set_starting(&self) {
+    /// Enter `starting` and hand back the cancellation token for this attempt.
+    /// Any older in-flight start is cancelled so only the newest one can win.
+    pub fn begin_start(&self) -> StartCancel {
         let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(previous) = inner.pending_start.take() {
+            previous.cancel();
+        }
+        let token = StartCancel::default();
+        inner.pending_start = Some(token.clone());
         inner.state = RuntimeState::Starting;
         inner.last_error = None;
+        token
     }
 
-    pub fn set_error(&self, err: AppError) {
+    /// Record a start failure, unless a newer start has superseded `token`.
+    pub fn finish_start_error(&self, token: &StartCancel, err: AppError) {
         let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        if !Self::is_current(&inner, token) {
+            return;
+        }
+        inner.pending_start = None;
         inner.state = RuntimeState::Error;
         inner.last_error = Some(err);
         inner.runtime = None;
     }
 
-    pub fn set_ready(&self, runtime: ManagedRuntime) {
+    /// Install a healthy runtime. Returns the runtime back to the caller (who
+    /// must stop it) when `token` was cancelled or superseded meanwhile.
+    pub fn finish_start_ready(
+        &self,
+        token: &StartCancel,
+        runtime: ManagedRuntime,
+    ) -> Result<(), ManagedRuntime> {
         let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        if !Self::is_current(&inner, token) || token.is_cancelled() {
+            return Err(runtime);
+        }
+        inner.pending_start = None;
         inner.state = RuntimeState::Ready;
         inner.last_error = None;
         inner.runtime = Some(runtime);
+        Ok(())
     }
 
+    fn is_current(inner: &Inner, token: &StartCancel) -> bool {
+        inner
+            .pending_start
+            .as_ref()
+            .is_some_and(|current| current.same_as(token))
+    }
+
+    /// Stop everything: cancel a start that is still loading and hand back the
+    /// running runtime (if any) for the caller to kill. State becomes `stopped`.
     pub fn take_runtime(&self) -> Option<ManagedRuntime> {
         let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(pending) = inner.pending_start.take() {
+            pending.cancel();
+        }
         inner.state = RuntimeState::Stopped;
+        inner.last_error = None;
         inner.runtime.take()
     }
+}
 
+pub fn accelerator_label(variant: RuntimeVariant) -> &'static str {
+    match variant {
+        RuntimeVariant::Vulkan => "GPU (Vulkan)",
+        RuntimeVariant::Cpu => "CPU",
+    }
 }
 
 pub fn context_chars_budget(ctx_size: u64) -> u64 {
@@ -313,6 +582,35 @@ pub async fn start(
     model_id: String,
     trained_context_length: Option<u64>,
 ) -> Result<ManagedRuntime, AppError> {
+    match start_cancellable(
+        resource_dir,
+        override_path,
+        preferred,
+        model_path,
+        model_id,
+        trained_context_length,
+        &StartCancel::default(),
+    )
+    .await?
+    {
+        StartOutcome::Ready(rt) => Ok(rt),
+        StartOutcome::Cancelled => Err(AppError::new(
+            ErrorCode::RuntimeFailedToStart,
+            Some("start cancelled".into()),
+        )),
+    }
+}
+
+/// `start`, but abortable through `cancel` while a variant is still loading.
+pub async fn start_cancellable(
+    resource_dir: Option<PathBuf>,
+    override_path: Option<String>,
+    preferred: Option<RuntimeVariant>,
+    model_path: String,
+    model_id: String,
+    trained_context_length: Option<u64>,
+    cancel: &StartCancel,
+) -> Result<StartOutcome, AppError> {
     let ctx_size = match trained_context_length {
         Some(trained) if trained > 0 => DEFAULT_CTX_SIZE.min(trained),
         _ => DEFAULT_CTX_SIZE,
@@ -338,17 +636,13 @@ pub async fn start(
             }
         };
 
-        match spawn_variant(&binary, variant, &model_path, &model_id, ctx_size).await {
+        match spawn_variant(&binary, variant, &model_path, &model_id, ctx_size, cancel).await {
             Ok(mut rt) => {
-                if let Some((failed_variant, err)) = &first_failure {
-                    rt.fallback_reason = Some(format!(
-                        "{failed_variant:?} unavailable: {}",
-                        err.detail.clone().unwrap_or_default()
-                    ));
-                }
-                return Ok(rt);
+                rt.fallback_reason = fallback_reason(variant, first_failure.as_ref());
+                return Ok(StartOutcome::Ready(rt));
             }
-            Err(e) => {
+            Err(StartFailure::Cancelled) => return Ok(StartOutcome::Cancelled),
+            Err(StartFailure::Error(e)) => {
                 if first_failure.is_none() {
                     first_failure = Some((variant, e));
                 }
@@ -361,9 +655,120 @@ pub async fn start(
         .unwrap_or_else(|| AppError::new(ErrorCode::RuntimeMissing, None)))
 }
 
+/// Why the runtime is not on the GPU path, if it is not. Always populated for
+/// a CPU runtime so the UI can say "running on CPU" honestly -- including when
+/// Vulkan was never attempted because CPU was the recorded working variant.
+fn fallback_reason(
+    variant: RuntimeVariant,
+    first_failure: Option<&(RuntimeVariant, AppError)>,
+) -> Option<String> {
+    match (variant, first_failure) {
+        (_, Some((failed_variant, err))) => Some(format!(
+            "{failed_variant:?} unavailable: {}",
+            err.detail.clone().unwrap_or_default()
+        )),
+        (RuntimeVariant::Cpu, None) => Some(
+            "Vulkan skipped: CPU was recorded as the working runtime on an earlier launch. \
+             Use \"Try GPU acceleration again\" in Advanced Diagnostics to retry Vulkan."
+                .to_string(),
+        ),
+        (RuntimeVariant::Vulkan, None) => None,
+    }
+}
+
 /// Stop a managed runtime gracefully-ish: kill the child and reap it.
 pub async fn stop(mut rt: ManagedRuntime) {
     logging::info("runtime.stop", &format!("port={}", rt.port));
-    let _ = rt.child.start_kill();
-    let _ = rt.child.wait().await;
+    kill_and_reap(&mut rt.child).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_args_bind_loopback_only_with_session_key() {
+        let args = server_args(4242, "secret", r"C:\models\m.gguf", 8192);
+        let joined = args.join(" ");
+        assert!(joined.contains("--host 127.0.0.1"));
+        assert!(joined.contains("--port 4242"));
+        assert!(joined.contains("--api-key secret"));
+        assert!(joined.contains(r"--model C:\models\m.gguf"));
+        assert!(joined.contains("--ctx-size 8192"));
+    }
+
+    #[test]
+    fn stderr_tail_is_bounded_and_stops_after_ready() {
+        let tail = StderrTail::default();
+        tail.capturing.store(true, Ordering::Relaxed);
+        tail.push(b"ggml_vulkan: No devices found\n");
+        tail.push(&vec![b'x'; STDERR_TAIL_BYTES * 2]);
+        assert!(tail.bytes.lock().unwrap().len() <= STDERR_TAIL_BYTES);
+
+        tail.stop_capturing();
+        tail.push(b"request: POST /v1/chat/completions\n");
+        assert!(tail.summary().is_none(), "nothing may be retained after ready");
+    }
+
+    #[test]
+    fn stderr_summary_keeps_last_lines() {
+        let tail = StderrTail::default();
+        tail.capturing.store(true, Ordering::Relaxed);
+        tail.push(b"line one\n\nline two\nerror: failed to load model\n");
+        let summary = tail.summary().unwrap();
+        assert!(summary.ends_with("error: failed to load model"));
+        assert!(summary.contains("line one | line two"));
+    }
+
+    #[test]
+    fn cpu_runtime_always_carries_a_fallback_reason() {
+        let failure = (
+            RuntimeVariant::Vulkan,
+            AppError::new(ErrorCode::RuntimeFailedToStart, Some("no device".into())),
+        );
+        let after_failure = fallback_reason(RuntimeVariant::Cpu, Some(&failure)).unwrap();
+        assert!(after_failure.contains("Vulkan unavailable: no device"));
+
+        let skipped = fallback_reason(RuntimeVariant::Cpu, None).unwrap();
+        assert!(skipped.contains("Vulkan skipped"));
+
+        assert!(fallback_reason(RuntimeVariant::Vulkan, None).is_none());
+    }
+
+    #[test]
+    fn take_runtime_cancels_pending_start() {
+        let manager = RuntimeManager::default();
+        let token = manager.begin_start();
+        assert_eq!(manager.status().state, RuntimeState::Starting);
+        assert_eq!(manager.status().engine_label.as_deref(), Some(ENGINE_LABEL));
+
+        assert!(manager.take_runtime().is_none());
+        assert!(token.is_cancelled());
+        let status = manager.status();
+        assert_eq!(status.state, RuntimeState::Stopped);
+        assert!(status.engine_label.is_none());
+        assert!(status.last_error.is_none());
+    }
+
+    #[test]
+    fn newer_start_supersedes_older_one() {
+        let manager = RuntimeManager::default();
+        let first = manager.begin_start();
+        let second = manager.begin_start();
+        assert!(first.is_cancelled());
+        assert!(!second.is_cancelled());
+
+        // A stale failure must not clobber the newer attempt's state.
+        manager.finish_start_error(
+            &first,
+            AppError::new(ErrorCode::RuntimeFailedToStart, None),
+        );
+        assert_eq!(manager.status().state, RuntimeState::Starting);
+
+        manager.finish_start_error(
+            &second,
+            AppError::new(ErrorCode::RuntimeFailedToStart, None),
+        );
+        assert_eq!(manager.status().state, RuntimeState::Error);
+    }
 }

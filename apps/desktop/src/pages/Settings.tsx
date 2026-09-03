@@ -7,28 +7,37 @@ import {
   type Settings as SettingsType,
 } from "../lib/ipc";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { resolveTheme } from "../lib/theme";
 
-export function Settings() {
-  const [settings, setSettings] = useState<SettingsType | null>(null);
+export function Settings({
+  settings,
+  onSettingsSaved,
+}: {
+  settings: SettingsType;
+  /** Lets App apply cross-screen settings (theme) the moment they change. */
+  onSettingsSaved: (settings: SettingsType) => void;
+}) {
   const [snapshot, setSnapshot] = useState<DiagnosticsSnapshot | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [cleared, setCleared] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
-    void ipc.getSettings().then(setSettings);
     void ipc.diagnosticsSnapshot().then(setSnapshot);
   }, []);
 
   const update = async (patch: Partial<SettingsType>) => {
-    if (!settings) return;
-    setSettings({ ...settings, ...patch });
+    const previous = settings;
+    onSettingsSaved({ ...settings, ...patch });
     try {
       // Merge onto the stored copy so fields owned by other screens, such as the
       // remembered conversation, survive edits made here.
       const stored = await ipc.getSettings();
-      await ipc.saveSettings({ ...stored, ...patch });
+      const next = { ...stored, ...patch };
+      await ipc.saveSettings(next);
+      onSettingsSaved(next);
     } catch (e) {
+      onSettingsSaved(previous);
       setError(toAppError(e));
     }
   };
@@ -47,8 +56,6 @@ export function Settings() {
       setError(toAppError(e));
     }
   };
-
-  if (!settings) return null;
 
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col gap-6 overflow-y-auto px-8 py-6">
@@ -70,8 +77,9 @@ export function Settings() {
         <label className="flex items-center justify-between text-sm">
           Theme
           <select
-            value={settings.theme}
+            value={resolveTheme(settings.theme)}
             onChange={(e) => void update({ theme: e.target.value })}
+            aria-label="Theme"
             className="rounded-lg border border-brand-border bg-brand-card px-3 py-1.5 text-sm outline-none focus:border-accent-primary/50"
           >
             <option value="dark">Dark</option>
@@ -149,7 +157,7 @@ function PathRow({ label, value }: { label: string; value?: string }) {
   return (
     <div className="flex items-baseline justify-between gap-4">
       <dt className="shrink-0 text-brand-textMuted">{label}</dt>
-      <dd className="truncate font-mono text-xs text-zinc-500" title={value}>
+      <dd className="select-text truncate font-mono text-xs text-zinc-500" title={value}>
         {value ?? "..."}
       </dd>
     </div>

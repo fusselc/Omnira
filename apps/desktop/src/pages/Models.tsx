@@ -9,6 +9,7 @@ import {
   type RuntimeStatus,
 } from "../lib/ipc";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { UnloadRuntimeButton } from "../components/UnloadRuntimeButton";
 import { formatBytes, formatWhen } from "../lib/format";
 
 export function Models({
@@ -21,6 +22,7 @@ export function Models({
   const [models, setModels] = useState<ModelEntry[]>([]);
   const [error, setError] = useState<AppError | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
@@ -47,6 +49,7 @@ export function Models({
   const useModel = async (id: string) => {
     setError(null);
     setBusy(true);
+    setLoadingId(id);
     try {
       await ipc.startRuntime(id);
       await reload();
@@ -54,14 +57,21 @@ export function Models({
       setError(toAppError(e));
     } finally {
       setBusy(false);
+      setLoadingId(null);
       await refreshRuntime();
     }
   };
 
   const removeModel = async (id: string) => {
     setError(null);
-    await ipc.removeModel(id);
+    try {
+      // The core unloads the engine if this model is the one running.
+      await ipc.removeModel(id);
+    } catch (e) {
+      setError(toAppError(e));
+    }
     await reload();
+    await refreshRuntime();
   };
 
   const startRename = (model: ModelEntry, e: React.MouseEvent | React.KeyboardEvent) => {
@@ -137,6 +147,7 @@ export function Models({
         <ul className="flex flex-col gap-3">
           {models.map((m) => {
             const active = runtime.model_id === m.id && runtime.state === "ready";
+            const starting = loadingId === m.id && runtime.state === "starting";
             return (
               <li
                 key={m.id}
@@ -176,8 +187,20 @@ export function Models({
                       </h3>
                     )}
                     {active && (
-                      <span className="rounded-full bg-accent-success/15 px-2 py-0.5 text-[11px] text-accent-success">
-                        In use
+                      <span
+                        className="rounded-full bg-accent-success/15 px-2 py-0.5 text-[11px] text-accent-success"
+                        title={
+                          runtime.accelerator_label
+                            ? `Engine: ${runtime.engine_label ?? "llama.cpp"} · Mode: ${runtime.accelerator_label}`
+                            : undefined
+                        }
+                      >
+                        In use{runtime.engine_label ? ` · ${runtime.engine_label}` : ""}
+                      </span>
+                    )}
+                    {starting && (
+                      <span className="rounded-full bg-accent-warning/15 px-2 py-0.5 text-[11px] text-accent-warning">
+                        Loading...
                       </span>
                     )}
                     {m.status === "missing" && (
@@ -220,6 +243,13 @@ export function Models({
                     <Play size={13} />
                     {active ? "Restart" : "Use"}
                   </button>
+                  {(active || starting) && (
+                    <UnloadRuntimeButton
+                      runtime={runtime}
+                      refreshRuntime={refreshRuntime}
+                      onError={setError}
+                    />
+                  )}
                   <button
                     onClick={() => void removeModel(m.id)}
                     className="rounded-lg border border-brand-border p-2 text-brand-textMuted hover:bg-brand-hover hover:text-accent-danger"

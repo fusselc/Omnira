@@ -57,11 +57,13 @@ function CodeBlock({ code }: { code: string }) {
   return (
     <div className="group relative my-2">
       <button
+        type="button"
         onClick={() => void handleCopy()}
-        className="absolute top-2 right-2 hidden rounded border border-brand-border bg-brand-hover px-2 py-1 text-xs text-brand-textMuted transition-colors hover:text-zinc-100 group-hover:block"
+        className="absolute top-2 right-2 rounded border border-brand-border bg-brand-hover px-2 py-1 text-xs text-brand-textMuted opacity-0 transition-opacity hover:text-zinc-100 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50"
         title="Copy code"
+        aria-label="Copy code"
       >
-        {copied ? "Copied!" : "Copy"}
+        {copied ? "Copied" : "Copy"}
       </button>
       <pre className="overflow-x-auto rounded-lg border border-brand-border bg-brand-card p-3 font-mono text-[0.8rem] leading-relaxed">
         <code>{code}</code>

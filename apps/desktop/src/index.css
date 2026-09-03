@@ -2,14 +2,71 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Theme tokens. tailwind.config.js maps the `brand-*` colors onto these
+ * variables, so switching theme is a matter of toggling `.light-theme` on the
+ * root element (src/lib/theme.ts). Dark is the default.
+ */
+:root {
+  color-scheme: dark;
+  --color-brand-deep: #09090b;
+  --color-brand-card: #18181b;
+  --color-brand-hover: #27272a;
+  --color-brand-border: #3f3f46;
+  --color-brand-text-muted: #a1a1aa;
+  --color-brand-glow: rgba(99, 102, 241, 0.15);
+}
+
+.light-theme {
+  color-scheme: light;
+  --color-brand-deep: #f4f4f5;
+  --color-brand-card: #ffffff;
+  --color-brand-hover: #e4e4e7;
+  --color-brand-border: #d4d4d8;
+  --color-brand-text-muted: #52525b;
+  --color-brand-glow: rgba(99, 102, 241, 0.12);
+}
+
 @layer base {
   body {
     @apply bg-brand-deep text-zinc-100 font-sans antialiased overflow-hidden select-none;
   }
 
-  /* Support for light theme */
-  .light-theme {
-    @apply bg-zinc-50 text-zinc-900;
+  /*
+   * Screens use fixed zinc shades for primary/secondary text on the dark
+   * palette. Remap the light shades so they stay readable on a light surface
+   * instead of disappearing into it.
+   */
+  .light-theme .text-zinc-100,
+  .light-theme .text-zinc-200,
+  .light-theme .text-zinc-300 {
+    color: #18181b;
+  }
+  .light-theme .hover\:text-zinc-100:hover,
+  .light-theme .hover\:text-zinc-200:hover {
+    color: #18181b;
+  }
+  .light-theme .text-zinc-400 {
+    color: #3f3f46;
+  }
+  .light-theme .text-zinc-500 {
+    color: #52525b;
+  }
+  .light-theme .text-zinc-600 {
+    color: #71717a;
+  }
+  .light-theme .placeholder\:text-zinc-600::placeholder,
+  .light-theme .placeholder\:text-zinc-700::placeholder {
+    color: #71717a;
+  }
+  .light-theme .bg-zinc-600 {
+    background-color: #a1a1aa;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse {
+    animation: none;
   }
 }
 

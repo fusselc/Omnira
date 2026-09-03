@@ -69,13 +69,39 @@ export function variantBadge(
   return { label: "Not running", tone: "none" };
 }
 
+/** The core marks a CPU start that never attempted Vulkan with this prefix. */
+export const VULKAN_SKIPPED_PREFIX = "Vulkan skipped:";
+
 export function fallbackExplanation(fallbackReason: string): FallbackExplanation {
+  if (fallbackReason.startsWith(VULKAN_SKIPPED_PREFIX)) {
+    return {
+      title: "Using CPU mode (remembered from an earlier launch)",
+      body:
+        "Omnira started on CPU because that is what worked last time; GPU acceleration (Vulkan) was not attempted. Use the button below to try Vulkan on the next model load.",
+      technicalDetail: fallbackReason,
+    };
+  }
   return {
     title: "Using CPU mode",
     body:
-      "Omnira tried GPU acceleration (Vulkan) first. It switched to CPU so chat can still run locally on this computer.",
+      "Omnira tried GPU acceleration (Vulkan) first. It switched to CPU so chat can still run locally on this computer. The engine's startup output is in the detail below.",
     technicalDetail: fallbackReason,
   };
+}
+
+/** Whether Omnira will keep skipping Vulkan on future loads. */
+export function prefersCpuFromEarlierLaunch(
+  preferredVariant: RuntimeVariant | null,
+): boolean {
+  return preferredVariant === "cpu";
+}
+
+export function engineSummary(
+  engineLabel: string | null,
+  state: RuntimeState,
+): string {
+  if (!engineLabel) return "None loaded";
+  return state === "starting" ? `${engineLabel} (starting)` : engineLabel;
 }
 
 export function localApiSummary(

@@ -80,9 +80,17 @@ pub fn add_model(state: State<AppState>, path: String) -> Result<ModelEntry, App
         .add_model(&name, &path, size, info.trained_context_length)
 }
 
-/// Removes only the registry entry; never deletes the model file.
+/// Removes only the registry entry; never deletes the model file. If that
+/// model is the one currently loaded, the engine is unloaded first so a
+/// conversation can never keep generating against a model the user removed.
 #[tauri::command]
-pub fn remove_model(state: State<AppState>, id: String) -> Result<(), AppError> {
+pub async fn remove_model(state: State<'_, AppState>, id: String) -> Result<(), AppError> {
+    if state.runtime.status().model_id.as_deref() == Some(id.as_str()) {
+        logging::info("model.remove", "unloading the running engine first");
+        if let Some(rt) = state.runtime.take_runtime() {
+            runtime::stop(rt).await;
+        }
+    }
     logging::info("model.remove", "registry entry only");
     state.storage.remove_model(&id)
 }
@@ -220,22 +228,25 @@ pub async fn start_runtime(
         runtime::stop(rt).await;
     }
 
-    state.runtime.set_starting();
+    // The token lets `stop_runtime` abort this load while the model is still
+    // being read, and lets a newer start supersede this one.
+    let token = state.runtime.begin_start();
 
     let settings = config::load();
     let resource_dir = app.path().resource_dir().ok();
 
-    match runtime::start(
+    match runtime::start_cancellable(
         resource_dir,
         settings.runtime_path_override.clone(),
         settings.preferred_runtime_variant,
         model.path.clone(),
         model_id.clone(),
         info.trained_context_length,
+        &token,
     )
     .await
     {
-        Ok(rt) => {
+        Ok(runtime::StartOutcome::Ready(rt)) => {
             // Record the working variant for next launch.
             let mut settings = config::load();
             if settings.preferred_runtime_variant != Some(rt.variant) {
@@ -243,17 +254,31 @@ pub async fn start_runtime(
                 let _ = config::save(&settings);
             }
             let _ = state.storage.touch_model(&model_id);
-            state.runtime.set_ready(rt);
+            if let Err(stale) = state.runtime.finish_start_ready(&token, rt) {
+                // Cancelled or superseded while the health check was finishing.
+                runtime::stop(stale).await;
+            }
+            Ok(state.runtime.status())
+        }
+        Ok(runtime::StartOutcome::Cancelled) => {
+            logging::info("runtime.start_cancelled", "by user");
             Ok(state.runtime.status())
         }
         Err(e) => {
+            if token.is_cancelled() {
+                // The user stopped the engine while this attempt was failing;
+                // the stopped state they asked for wins over a stale error.
+                return Ok(state.runtime.status());
+            }
             logging::error("runtime.start_failed", &format!("code={:?}", e.code));
-            state.runtime.set_error(e.clone());
+            state.runtime.finish_start_error(&token, e.clone());
             Err(e)
         }
     }
 }
 
+/// Unload the engine: aborts a load that is still in progress and kills a
+/// running llama-server. Always leaves the runtime in `stopped`.
 #[tauri::command]
 pub async fn stop_runtime(state: State<'_, AppState>) -> Result<RuntimeStatus, AppError> {
     if let Some(rt) = state.runtime.take_runtime() {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Send, Square, Trash2, Boxes, Pencil } from "lucide-react";
+import { Plus, Send, Square, Trash2, Boxes, Pencil, AlertTriangle } from "lucide-react";
 import {
   ipc,
   toAppError,
@@ -10,17 +10,22 @@ import {
   type RuntimeStatus,
 } from "../lib/ipc";
 import { startStream, truncateToBudget, type StreamHandle } from "../lib/chat";
+import { sendBlocker } from "../lib/chatGuards";
 import { Markdown } from "../lib/markdown";
 import { StatusPill } from "../components/StatusPill";
+import { UnloadRuntimeButton } from "../components/UnloadRuntimeButton";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { formatWhen } from "../lib/format";
 
 export function Chat({
+  visible = true,
   runtime,
   refreshRuntime,
   onGoToModels,
   onGoToDiagnostics,
 }: {
+  /** Chat stays mounted while hidden; this flags when it is on screen. */
+  visible?: boolean;
   runtime: RuntimeStatus;
   refreshRuntime: () => Promise<void>;
   onGoToModels: () => void;
@@ -32,19 +37,29 @@ export function Chat({
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [error, setError] = useState<AppError | null>(null);
-  const [truncatedNotice, setTruncatedNotice] = useState(false);
+  const [truncatedForId, setTruncatedForId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: string;
+    stoppedGeneration: boolean;
+  } | null>(null);
   const streamRef = useRef<StreamHandle | null>(null);
   const streamBufferRef = useRef("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
   const restoredRef = useRef(false);
+  const activeIdRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+  const [lengthLimitedIds, setLengthLimitedIds] = useState<string[]>([]);
 
   // Renaming & Fallback states
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [dismissedFallback, setDismissedFallback] = useState(false);
 
-  const generating = streamingText !== null;
+  const generating = generatingId !== null;
+  const viewingStream = generating && activeId === generatingId;
   const activeConvo = conversations.find((c) => c.id === activeId);
   /** Model tied to the active conversation (persisted), not the live runtime. */
   const conversationModelId = activeConvo?.model_id ?? null;
@@ -63,13 +78,21 @@ export function Chat({
     conversationModel?.status === "ok" &&
     conversationModelId !== runtime.model_id &&
     !generating;
-  const canSend =
+  /**
+   * The engine reports a model that is no longer in the registry (removed
+   * while loaded) or whose file is gone. Nothing may be sent to it.
+   */
+  const loadedModelUnavailable =
     runtime.state === "ready" &&
-    !needsRuntimeReload &&
-    !conversationModelUnregistered &&
-    !conversationModelFileMissing &&
-    !conversationModelInvalid &&
-    runtime.model_id === dropdownModelId;
+    runtime.model_id != null &&
+    runtimeModel?.status !== "ok";
+  const canSend =
+    sendBlocker({ runtime, models, conversationModelId, generating }) === null;
+  /** Prefer the core's last_error while the engine is in error; otherwise the local stream/IPC error. */
+  const engineError =
+    runtime.state === "error" ? (runtime.last_error ?? error) : error;
+  const showErrorEmpty =
+    runtime.state === "error" && messages.length === 0 && !viewingStream;
 
   const loadConversations = useCallback(async () => {
     const list = await ipc.listConversations();
@@ -92,6 +115,31 @@ export function Chat({
     })();
   }, [loadConversations, loadModels]);
 
+  // Chat is never unmounted, so registry changes made on Models (remove,
+  // rename, add) and engine changes must be picked up when the user comes
+  // back or when the loaded model changes underneath us.
+  useEffect(() => {
+    if (!visible) return;
+    void loadModels();
+    void loadConversations();
+  }, [visible, runtime.model_id, runtime.state, loadModels, loadConversations]);
+
+  useEffect(() => {
+    activeIdRef.current = activeId;
+    setTruncatedForId((prev) => (prev === activeId ? prev : null));
+    setPendingDelete((prev) => (prev && prev.id !== activeId ? null : prev));
+  }, [activeId]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      // App close / true unmount: abort so the cancelled path can persist
+      // any partial assistant text (stream-boundary contract).
+      streamRef.current?.cancel();
+    };
+  }, []);
+
   useEffect(() => {
     // Only track selections the user made this session, so the initial null
     // state cannot erase the thread we are about to restore.
@@ -108,8 +156,39 @@ export function Chat({
   }, [activeId]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    stickToBottomRef.current = true;
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [activeId]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !stickToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
   }, [messages, streamingText]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (editingId !== null) {
+        e.preventDefault();
+        setEditingId(null);
+        setEditTitle("");
+        return;
+      }
+      if (pendingDelete !== null) {
+        e.preventDefault();
+        setPendingDelete(null);
+        return;
+      }
+      if (generatingId !== null) {
+        e.preventDefault();
+        streamRef.current?.cancel();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [editingId, pendingDelete, generatingId]);
 
   useEffect(() => {
     setDismissedFallback(false);
@@ -143,11 +222,29 @@ export function Chat({
     setActiveId(convo.id);
   };
 
-  const removeConversation = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this conversation? This cannot be undone.")) return;
-    await ipc.deleteConversation(id);
-    if (activeId === id) setActiveId(null);
-    await loadConversations();
+  const cancelPendingDelete = () => {
+    setPendingDelete(null);
+  };
+
+  const confirmDelete = async (id: string) => {
+    setPendingDelete(null);
+    try {
+      await ipc.deleteConversation(id);
+      if (activeIdRef.current === id) setActiveId(null);
+      await loadConversations();
+    } catch (e) {
+      setError(toAppError(e));
+    }
+  };
+
+  const requestDelete = (id: string) => {
+    if (pendingDelete?.id === id) {
+      void confirmDelete(id);
+      return;
+    }
+    const stoppedGeneration = generatingId === id;
+    if (stoppedGeneration) streamRef.current?.cancel();
+    setPendingDelete({ id, stoppedGeneration });
   };
 
   const startRename = (convo: Conversation, e: React.MouseEvent | React.KeyboardEvent) => {
@@ -195,74 +292,113 @@ export function Chat({
     setError(null);
     setDraft("");
 
-    // Ensure a conversation exists.
-    let convoId = activeId;
-    if (!convoId) {
-      const title = content.length > 48 ? `${content.slice(0, 48)}...` : content;
-      const convo = await ipc.createConversation(title, runtime.model_id);
-      convoId = convo.id;
-      setActiveId(convoId);
-      await loadConversations();
-    } else if (messages.length === 0) {
-      const title = content.length > 48 ? `${content.slice(0, 48)}...` : content;
-      await ipc.renameConversation(convoId, title);
-      await loadConversations();
-    }
-
-    if (dropdownModelId && activeConvo?.model_id !== dropdownModelId) {
-      await ipc.setConversationModel(convoId, dropdownModelId);
-      await loadConversations();
-    }
-
-    // Persist the user message BEFORE streaming (stream-boundary contract).
-    const userMsg = await ipc.addMessage(convoId, "user", content, "complete");
-    const history = [...messages, userMsg];
-    setMessages(history);
-
-    // Truncate against the Rust-provided character budget.
-    let budget = 24000;
+    let persistedUser = false;
     try {
-      budget = (await ipc.chatEndpoint()).context_chars_budget;
-    } catch {
-      // endpoint errors surface below through the stream path
-    }
-    const { messages: wire, truncated } = truncateToBudget(history, budget);
-    setTruncatedNotice(truncated);
-
-    streamBufferRef.current = "";
-    setStreamingText("");
-
-    const persistAssistant = async (
-      text: string,
-      status: "complete" | "interrupted",
-    ) => {
-      if (text.length === 0 && status === "interrupted") {
-        setStreamingText(null);
-        return;
+      // Ensure a conversation exists.
+      let convoId = activeId;
+      if (!convoId) {
+        const title = content.length > 48 ? `${content.slice(0, 48)}...` : content;
+        const convo = await ipc.createConversation(title, runtime.model_id);
+        convoId = convo.id;
+        setActiveId(convoId);
+        await loadConversations();
+      } else if (messages.length === 0) {
+        const title = content.length > 48 ? `${content.slice(0, 48)}...` : content;
+        await ipc.renameConversation(convoId, title);
+        await loadConversations();
       }
-      const saved = await ipc.addMessage(convoId, "assistant", text, status);
-      setMessages((prev) => [...prev, saved]);
-      setStreamingText(null);
-      await loadConversations();
-    };
 
-    streamRef.current = startStream(wire, {
-      onChunk: (delta) => {
-        streamBufferRef.current += delta;
-        setStreamingText(streamBufferRef.current);
-      },
-      onDone: (reason) => {
-        void persistAssistant(
-          streamBufferRef.current,
-          reason === "cancelled" ? "interrupted" : "complete",
-        );
-      },
-      onError: (err) => {
-        // Persist whatever partial content arrived, then surface the error.
-        void persistAssistant(streamBufferRef.current, "interrupted");
-        if (err.code !== "GenerationCancelled") setError(err);
-      },
-    });
+      if (dropdownModelId && activeConvo?.model_id !== dropdownModelId) {
+        await ipc.setConversationModel(convoId, dropdownModelId);
+        await loadConversations();
+      }
+
+      // Persist the user message BEFORE streaming (stream-boundary contract).
+      const userMsg = await ipc.addMessage(convoId, "user", content, "complete");
+      persistedUser = true;
+      const history = [...messages, userMsg];
+      setMessages(history);
+
+      // The core is the authority on whether an engine is actually up: this
+      // fails with BackendUnavailable when llama-server died or was unloaded,
+      // so nothing is ever streamed to a model that is not loaded. It also
+      // supplies the character budget used for truncation.
+      const budget = (await ipc.chatEndpoint()).context_chars_budget;
+      const { messages: wire, truncated } = truncateToBudget(history, budget);
+      setTruncatedForId(truncated ? convoId : null);
+
+      streamBufferRef.current = "";
+      setGeneratingId(convoId);
+      setStreamingText("");
+
+      const persistAssistant = async (
+        text: string,
+        status: "complete" | "interrupted",
+        lengthLimited = false,
+      ) => {
+        streamRef.current = null;
+        const finishUi = () => {
+          if (!mountedRef.current) return;
+          setStreamingText(null);
+          setGeneratingId(null);
+        };
+        if (text.length === 0 && status === "interrupted") {
+          finishUi();
+          return;
+        }
+        try {
+          const saved = await ipc.addMessage(convoId, "assistant", text, status);
+          if (lengthLimited) {
+            setLengthLimitedIds((prev) =>
+              prev.includes(saved.id) ? prev : [...prev, saved.id],
+            );
+          }
+          const listed = await ipc.listMessages(convoId);
+          if (mountedRef.current && activeIdRef.current === convoId) {
+            setMessages(listed);
+          }
+        } catch (e) {
+          if (mountedRef.current) setError(toAppError(e));
+        } finally {
+          finishUi();
+          if (mountedRef.current) await loadConversations();
+        }
+      };
+
+      streamRef.current = startStream(wire, {
+        onChunk: (delta) => {
+          streamBufferRef.current += delta;
+          if (mountedRef.current) setStreamingText(streamBufferRef.current);
+        },
+        onDone: (reason) => {
+          void persistAssistant(
+            streamBufferRef.current,
+            reason === "cancelled" ? "interrupted" : "complete",
+            reason === "length",
+          );
+        },
+        onError: (err) => {
+          // Persist whatever partial content arrived, then surface the error.
+          void persistAssistant(streamBufferRef.current, "interrupted");
+          if (mountedRef.current && err.code !== "GenerationCancelled") {
+            setError(err);
+          }
+        },
+      });
+    } catch (e) {
+      if (!persistedUser) setDraft(content);
+      setError(toAppError(e));
+      setStreamingText(null);
+      setGeneratingId(null);
+      // The engine may have gone away; show its real state right now.
+      void refreshRuntime();
+    }
+  };
+
+  const unloadRuntime = () => {
+    // Free the in-flight stream first so the cancelled path persists any
+    // partial answer before the engine disappears.
+    streamRef.current?.cancel();
   };
 
   const readyModels = models.filter((m) => m.status === "ok");
@@ -294,11 +430,20 @@ export function Chat({
               key={c.id}
               tabIndex={0}
               onKeyDown={(e) => {
+                if (e.key === "Escape" && pendingDelete?.id === c.id) {
+                  e.preventDefault();
+                  cancelPendingDelete();
+                  return;
+                }
+                if (e.target !== e.currentTarget) return;
                 if (e.key === "F2" && !generating) {
                   startRename(c, e);
+                } else if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setActiveId(c.id);
                 }
               }}
-              className={`group flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50 ${
+              className={`group flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50 focus-visible:ring-offset-1 focus-visible:ring-offset-brand-deep ${
                 c.id === activeId
                   ? "bg-brand-hover text-zinc-100 font-medium"
                   : "text-brand-textMuted hover:bg-brand-hover/60"
@@ -312,6 +457,7 @@ export function Chat({
                   onChange={(e) => setEditTitle(e.target.value)}
                   onBlur={() => void saveRename(c.id)}
                   onKeyDown={(e) => {
+                    e.stopPropagation();
                     if (e.key === "Enter") {
                       e.preventDefault();
                       void saveRename(c.id);
@@ -320,23 +466,58 @@ export function Chat({
                       cancelRename();
                     }
                   }}
-                  className="flex-1 rounded border border-accent-primary/60 bg-brand-card px-1 py-0.5 text-sm text-zinc-100 outline-none"
+                  className="flex-1 rounded border border-accent-primary/60 bg-brand-card px-1 py-0.5 text-sm text-zinc-100 outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50"
                   autoFocus
                   onFocus={(e) => e.target.select()}
                   onClick={(e) => e.stopPropagation()}
                 />
+              ) : pendingDelete?.id === c.id ? (
+                <div
+                  className="flex min-w-0 flex-1 flex-col items-stretch gap-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span className="truncate text-sm">{c.title}</span>
+                  {pendingDelete.stoppedGeneration && (
+                    <span className="text-[10px] text-brand-textMuted">
+                      Generation stopped.
+                    </span>
+                  )}
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void confirmDelete(c.id)}
+                      className="rounded bg-accent-danger px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-accent-danger/90"
+                    >
+                      Click again to delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelPendingDelete}
+                      className="rounded px-1.5 py-0.5 text-[10px] text-brand-textMuted hover:text-zinc-100"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <>
+                  {c.id === generatingId && (
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-primary"
+                      title="Generating a response"
+                      aria-label="Generating a response"
+                    />
+                  )}
                   <span
                     className="flex-1 truncate"
                     onDoubleClick={(e) => startRename(c, e)}
                   >
                     {c.title}
                   </span>
-                  <span className="text-[10px] text-zinc-600 group-hover:hidden">
+                  <span className="text-[10px] text-zinc-600 group-hover:hidden group-focus-within:hidden">
                     {formatWhen(c.updated_at)}
                   </span>
-                  <div className="hidden shrink-0 items-center gap-1 group-hover:flex">
+                  <div className="hidden shrink-0 items-center gap-1 group-hover:flex group-focus-within:flex">
                     <button
                       onClick={(e) => startRename(c, e)}
                       disabled={generating}
@@ -349,10 +530,9 @@ export function Chat({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        void removeConversation(c.id);
+                        requestDelete(c.id);
                       }}
-                      disabled={generating}
-                      className="rounded p-0.5 text-zinc-500 hover:text-accent-danger disabled:opacity-30"
+                      className="rounded p-0.5 text-zinc-500 hover:text-accent-danger"
                       title="Delete conversation"
                       aria-label="Delete conversation"
                     >
@@ -379,7 +559,8 @@ export function Chat({
               value={dropdownModelId ?? ""}
               onChange={(e) => e.target.value && void selectModel(e.target.value)}
               disabled={runtime.state === "starting" || generating}
-              className="max-w-56 rounded-lg border border-brand-border bg-brand-card px-3 py-1.5 text-xs text-zinc-100 outline-none focus:border-accent-primary/50"
+              aria-label="Model"
+              className="max-w-56 rounded-lg border border-brand-border bg-brand-card px-3 py-1.5 text-xs text-zinc-100 outline-none focus:border-accent-primary/50 focus-visible:ring-1 focus-visible:ring-accent-primary/50"
             >
               <option value="" disabled>
                 {readyModels.length ? "Choose a model" : "No models added"}
@@ -403,8 +584,30 @@ export function Chat({
               ))}
             </select>
             <StatusPill status={runtime} />
+            <UnloadRuntimeButton
+              runtime={runtime}
+              refreshRuntime={refreshRuntime}
+              onBeforeStop={unloadRuntime}
+              onError={setError}
+              compact
+            />
           </div>
         </header>
+
+        {loadedModelUnavailable && !conversationModelUnregistered && (
+          <div className="mx-5 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent-danger/30 bg-accent-danger/10 px-4 py-3 text-sm">
+            <p className="text-brand-textMuted">
+              The loaded model is no longer available in Omnira, so chat is
+              paused. Choose another model, or unload the engine.
+            </p>
+            <button
+              onClick={onGoToModels}
+              className="shrink-0 rounded-lg border border-brand-border px-3 py-1.5 text-xs font-medium hover:bg-brand-hover"
+            >
+              Go to Models
+            </button>
+          </div>
+        )}
 
         {conversationModelUnregistered && (
           <div className="mx-5 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent-danger/30 bg-accent-danger/10 px-4 py-3 text-sm">
@@ -470,18 +673,23 @@ export function Chat({
           </div>
         )}
 
-        {error && (
+        {engineError && !showErrorEmpty && (
           <div className="px-5 pt-3">
-            <ErrorBanner error={error} onDismiss={() => setError(null)} />
+            <ErrorBanner
+              error={engineError}
+              onDismiss={runtime.state === "error" ? undefined : () => setError(null)}
+            />
           </div>
         )}
 
-        {runtime.state === "ready" && runtime.fallback_reason && !dismissedFallback && (
+        {runtime.state === "ready" && runtime.variant === "cpu" && runtime.fallback_reason && !dismissedFallback && (
           <div className="px-5 pt-3">
             <div className="flex items-center justify-between rounded-xl border border-accent-warning/30 bg-accent-warning/5 px-4 py-3 text-sm text-zinc-200">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-accent-warning font-semibold">⚡ Performance Note:</span>
-                <span>Running in CPU mode. Responses may be slower because GPU acceleration was unavailable.</span>
+                <span>
+                  Running on CPU. Responses may be slower than with GPU
+                  acceleration.
+                </span>
                 <button
                   onClick={onGoToDiagnostics}
                   className="ml-1 text-xs font-semibold text-accent-primary hover:underline"
@@ -501,9 +709,18 @@ export function Chat({
           </div>
         )}
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4">
+        <div
+          ref={scrollRef}
+          onScroll={() => {
+            const el = scrollRef.current;
+            if (!el) return;
+            stickToBottomRef.current =
+              el.scrollHeight - el.scrollTop - el.clientHeight < 64;
+          }}
+          className="flex-1 overflow-y-auto px-5 py-4"
+        >
           {/* Empty states are first-class (docs/design-principles.md) */}
-          {runtime.state === "stopped" && messages.length === 0 && !generating ? (
+          {runtime.state === "stopped" && messages.length === 0 && !viewingStream ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-card text-accent-primary">
                 <Boxes size={26} />
@@ -519,9 +736,9 @@ export function Chat({
                 Choose a model
               </button>
             </div>
-          ) : runtime.state === "starting" && messages.length === 0 && !generating ? (
+          ) : runtime.state === "starting" && messages.length === 0 && !viewingStream ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-card text-accent-warning animate-pulse">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-card text-accent-warning animate-pulse motion-reduce:animate-none">
                 <Boxes size={26} />
               </div>
               <h2 className="text-lg font-medium">Starting local model...</h2>
@@ -529,7 +746,25 @@ export function Chat({
                 This can take up to a minute depending on your computer's performance and the model's size.
               </p>
             </div>
-          ) : messages.length === 0 && !generating ? (
+          ) : showErrorEmpty ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-card text-accent-danger">
+                <AlertTriangle size={26} />
+              </div>
+              <h2 className="text-lg font-medium">
+                {engineError?.message ?? "Omnira's engine is not responding."}
+              </h2>
+              <p className="max-w-sm text-sm text-brand-textMuted">
+                {engineError?.suggested_action ?? "Restart Omnira."}
+              </p>
+              <button
+                onClick={onGoToDiagnostics}
+                className="mt-2 rounded-lg bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-primary/90"
+              >
+                Advanced Diagnostics
+              </button>
+            </div>
+          ) : messages.length === 0 && !viewingStream ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
               <h2 className="text-lg font-medium">Ready when you are</h2>
               <p className="max-w-sm text-sm text-brand-textMuted">
@@ -539,19 +774,23 @@ export function Chat({
             </div>
           ) : (
             <div className="mx-auto flex max-w-3xl flex-col gap-4">
-              {truncatedNotice && (
+              {truncatedForId === activeId && (
                 <p className="text-center text-[11px] text-zinc-600">
                   Earlier messages are not included -- this conversation is
                   longer than the model can read at once.
                 </p>
               )}
               {messages.map((m) => (
-                <MessageBubble key={m.id} message={m} />
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  lengthLimited={lengthLimitedIds.includes(m.id)}
+                />
               ))}
-              {streamingText !== null && (
-                <div className="max-w-[85%] self-start rounded-2xl rounded-bl-sm bg-brand-card px-4 py-3">
+              {viewingStream && streamingText !== null && (
+                <div className="max-w-[85%] select-text self-start rounded-2xl rounded-bl-sm bg-brand-card px-4 py-3">
                   {streamingText === "" ? (
-                    <span className="text-sm text-brand-textMuted animate-pulse">
+                    <span className="text-sm text-brand-textMuted animate-pulse motion-reduce:animate-none">
                       Thinking...
                     </span>
                   ) : (
@@ -566,6 +805,13 @@ export function Chat({
         {/* Composer */}
         <footer className="border-t border-brand-border px-5 py-4">
           <div className="mx-auto flex max-w-3xl items-end gap-2">
+            <div aria-live="polite" aria-atomic="true" className="sr-only">
+              {generating
+                ? streamingText
+                  ? "Generating a response"
+                  : "Thinking..."
+                : ""}
+            </div>
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -575,6 +821,7 @@ export function Chat({
                   void send();
                 }
               }}
+              aria-label="Message"
               rows={Math.min(6, Math.max(1, draft.split("\n").length))}
               placeholder={
                 conversationModelUnregistered
@@ -583,19 +830,23 @@ export function Chat({
                     ? "Restore the model file to continue..."
                     : needsRuntimeReload
                       ? "Load this conversation's model to continue..."
-                      : runtime.state === "ready"
-                        ? "Message your local model..."
-                        : runtime.state === "starting"
-                          ? "Starting model..."
-                          : "Choose a model to start"
+                      : loadedModelUnavailable
+                        ? "The loaded model was removed. Choose another model..."
+                      : runtime.state === "error"
+                        ? (engineError?.message ?? "Omnira's engine is not responding.")
+                        : runtime.state === "ready"
+                          ? "Message your local model..."
+                          : runtime.state === "starting"
+                            ? "Starting model..."
+                            : "Choose a model to start"
               }
               disabled={!canSend || generating}
-              className="flex-1 resize-none rounded-xl border border-brand-border bg-brand-card px-4 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-accent-primary/50 disabled:opacity-60"
+              className="flex-1 resize-none rounded-xl border border-brand-border bg-brand-card px-4 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-accent-primary/50 focus-visible:ring-1 focus-visible:ring-accent-primary/50 disabled:opacity-60"
             />
             {generating ? (
               <button
                 onClick={stopGeneration}
-                className="flex h-11 items-center gap-2 rounded-xl bg-accent-danger px-4 font-medium text-white hover:bg-accent-danger/90 transition-colors"
+                className="flex h-11 items-center gap-2 rounded-xl bg-accent-danger px-4 font-medium text-white hover:bg-accent-danger/90 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50"
                 title="Stop generating"
                 aria-label="Stop generating"
               >
@@ -606,8 +857,9 @@ export function Chat({
               <button
                 onClick={() => void send()}
                 disabled={!canSend || !draft.trim()}
-                className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent-primary text-white hover:bg-accent-primary/90 disabled:opacity-40"
-                title="Send"
+                className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent-primary text-white hover:bg-accent-primary/90 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50"
+                title="Send message"
+                aria-label="Send message"
               >
                 <Send size={16} />
               </button>
@@ -619,20 +871,31 @@ export function Chat({
   );
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+  message,
+  lengthLimited = false,
+}: {
+  message: Message;
+  lengthLimited?: boolean;
+}) {
   if (message.role === "user") {
     return (
-      <div className="max-w-[85%] self-end whitespace-pre-wrap rounded-2xl rounded-br-sm bg-accent-primary/20 px-4 py-3 text-sm">
+      <div className="max-w-[85%] select-text self-end whitespace-pre-wrap rounded-2xl rounded-br-sm bg-accent-primary/20 px-4 py-3 text-sm">
         {message.content}
       </div>
     );
   }
   return (
-    <div className="max-w-[85%] self-start rounded-2xl rounded-bl-sm bg-brand-card px-4 py-3">
+    <div className="max-w-[85%] select-text self-start rounded-2xl rounded-bl-sm bg-brand-card px-4 py-3">
       <Markdown text={message.content} />
       {message.status === "interrupted" && (
         <p className="mt-1 text-[11px] italic text-zinc-600">
           Generation stopped -- partial response kept.
+        </p>
+      )}
+      {lengthLimited && message.status === "complete" && (
+        <p className="mt-1 text-[11px] italic text-zinc-600">
+          Response reached the length limit.
         </p>
       )}
     </div>

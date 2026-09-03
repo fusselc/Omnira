@@ -30,6 +30,7 @@ const conversations: Conversation[] = [];
 const messages: Message[] = [];
 let runtime: RuntimeStatus = {
   state: "stopped",
+  engine_label: null,
   variant: null,
   accelerator_label: null,
   fallback_reason: null,
@@ -41,6 +42,17 @@ let runtime: RuntimeStatus = {
 
 const now = () => new Date().toISOString();
 const id = () => crypto.randomUUID();
+const stoppedRuntime = (): RuntimeStatus => ({
+  state: "stopped",
+  engine_label: null,
+  variant: null,
+  accelerator_label: null,
+  fallback_reason: null,
+  model_id: null,
+  port: null,
+  context_size: null,
+  last_error: null,
+});
 
 export async function mockInvoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
   switch (cmd) {
@@ -73,6 +85,7 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
     case "remove_model": {
       const idx = models.findIndex((m) => m.id === args!.id);
       if (idx >= 0) models.splice(idx, 1);
+      if (runtime.model_id === args!.id) runtime = stoppedRuntime();
       return;
     }
     case "rename_model": {
@@ -140,6 +153,7 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
     case "start_runtime": {
       runtime = {
         state: "ready",
+        engine_label: "llama.cpp",
         variant: "cpu",
         accelerator_label: "CPU",
         fallback_reason:
@@ -154,7 +168,7 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
       return runtime;
     }
     case "stop_runtime":
-      runtime = { ...runtime, state: "stopped", model_id: null, port: null };
+      runtime = stoppedRuntime();
       return runtime;
     case "chat_endpoint":
       return { base_url: "http://127.0.0.1:12345", api_key: "mock", context_chars_budget: 18000 };

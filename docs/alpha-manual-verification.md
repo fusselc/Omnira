@@ -70,7 +70,7 @@ Derived from the README MVP workflow and Phase 5 packaging/security requirements
 7. No telemetry, accounts, or cloud sync in the MVP path.
 8. Default runtime path makes no external network calls; works offline after install.
 9. `llama-server` binds loopback-only and requires a per-session API key.
-10. Main UI says "Running locally"; Vulkan/CPU details stay in Advanced Diagnostics.
+10. Main UI says "Running locally · llama.cpp" (and "Running on CPU" only when that is true); full Vulkan/CPU details stay in Advanced Diagnostics.
 11. Removing a model from Omnira does not delete the GGUF file on disk.
 12. Diagnostics export redacts user profile paths by default and stays prompt-free.
 13. Force-killing Omnira does not leave an orphaned `llama-server.exe` (Job Object).

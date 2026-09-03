@@ -22,17 +22,32 @@ Use this checklist to perform final manual QA sweeps before tagging and publishi
 - [ ] From the main Chat interface (with network interfaces still disabled), click to start your active model.
 - [ ] Verify that the visual loading state displaying "Starting local model..." appears.
 - [ ] Confirm that the model starts up and transitions to "Ready when you are" or opens the chat inputs.
+- [ ] While the model loads, confirm that **no console or Windows Terminal window appears** at any point, and that none is left open once the model is ready (Task Manager shows a single `llama-server.exe` under `omnira.exe`).
+- [ ] Confirm the status pill reads "Running locally · llama.cpp" and its tooltip names the mode (CPU or GPU (Vulkan)).
 - [ ] Send a message (e.g. "Say hello in one short sentence").
 - [ ] Verify that token generation streams back in real-time.
 - [ ] Test the unmistakable "Stop" generation control: press the Stop button during active generation and verify the stream immediately halts while preserving the partial response.
+- [ ] Start a long generation, switch to Models, then back to Chat: the response is still streaming (or finished) -- it must not be lost.
+- [ ] Click-drag across an assistant reply and a user message and press Ctrl+C: the text is selectable and copies.
+- [ ] Press **Unload model** in the Chat header: `llama-server.exe` exits, the pill shows "No model running", and the composer shows "Choose a model to start". Repeat via the Models screen button.
+- [ ] Load a large model and press **Cancel loading** while it is still starting: loading stops, no error is shown, and `llama-server.exe` is gone.
+- [ ] With a model loaded and a conversation open, remove that model on the Models screen and return to Chat: the engine is unloaded, a "no longer available" notice appears, and sending is disabled (no "Thinking..." without a model).
 
 ## 4. CPU Fallback Notice
 - [ ] Force a CPU fallback (e.g. by selecting a model that exceeds GPU memory capacity or running in an environment without Vulkan support).
 - [ ] Verify that a performance notice is displayed in the main Chat experience stating:
-  *"Running in CPU mode. Responses may be slower because GPU acceleration was unavailable."*
+  *"Running on CPU. Responses may be slower than with GPU acceleration."*
 - [ ] Confirm that the notice is dismissible for the current session.
-- [ ] Click "View details" on the notice and verify it redirects you to the Advanced Diagnostics panel.
+- [ ] Click "View details" on the notice and verify it redirects you to the Advanced Diagnostics panel, where the fallback detail includes the engine's startup output (the reason Vulkan failed).
 - [ ] Confirm that the notice does not show up when Vulkan/GPU acceleration starts successfully.
+- [ ] Restart Omnira and load the model again: it starts on CPU (remembered), the notice still appears, and Advanced Diagnostics offers "Try GPU acceleration again". Press it, reload the model, and confirm Vulkan is attempted first.
+
+## 4b. Theme
+- [ ] In Settings, switch Theme to Light: the whole app (sidebar, chat, cards, inputs) switches immediately without restart, and text stays readable.
+- [ ] Restart Omnira: the light theme is still applied. Switch back to Dark and confirm the same.
+
+## 4c. Branding
+- [ ] The window title bar, taskbar, Start menu, and installer show the Omnira ring icon, not the stock Tauri icon.
 
 ## 5. Conversation Rename, Model Rename, and Delete Confirmation
 - [ ] Create a new conversation or send a first message.
