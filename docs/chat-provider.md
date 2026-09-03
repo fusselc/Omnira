@@ -7,6 +7,13 @@ API in MVP. Long-term capability interfaces (`EmbeddingProvider`,
 `VisionProvider`, `OnnxProvider`, `RagProvider`, `ToolAgentProvider`,
 `WorkflowProvider`, `VideoProvider`, `MusicAudioProvider`,
 `WebSearchProvider`) are documented in `docs/runtimes-and-routing.md` only.
+Status and phase ordering live in `docs/roadmap.md` and the navigation index
+`docs/capability-map.md` (canonical docs win on conflict).
+
+**ChatProvider remains text GGUF chat.** Multimodal attachments, file
+understanding, and related conversational ingestion are out of scope for this
+contract until a separate design assigns provider and runtime. Do not silently
+extend this interface or the Chat UI for those capabilities.
 
 ## 1. Responsibilities
 

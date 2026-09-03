@@ -55,10 +55,20 @@ The long-term goal is a unified local AI workstation: chat, model management,
 image generation, voice, memory/RAG, agents, workflows, video, music, and
 multimodal AI, orchestrated across multiple runtimes (llama.cpp/GGUF,
 Windows ML/ONNX, CUDA/TensorRT). See `docs/runtimes-and-routing.md` for the
-runtime strategy and `docs/roadmap.md` for phase ordering.
+runtime strategy, `docs/roadmap.md` for phase ordering, and
+`docs/capability-map.md` for a navigation/status index (canonical docs win on
+conflict).
 
-The MVP is intentionally narrow: local GGUF chat only. Public messaging must
-always separate current MVP status from long-term vision.
+**Multimodal chat and file understanding** (conversational attachments /
+ingestion) is part of that direction but is **not** image generation, **not**
+Phase 8 computer-vision tasks, and **not** RAG. It has no fixed phase until a
+design decision exists; do not treat it as shipped or as a silent Chat
+extension.
+
+The shipped product is intentionally narrow: local GGUF chat only (Vulkan/CPU).
+Public messaging must always separate current shipped status from long-term
+vision. Phase 6 CUDA for ChatProvider is next approved; Phase 7 Create is
+deferred until end-to-end criteria are met.
 
 ## 6. Non-goals
 

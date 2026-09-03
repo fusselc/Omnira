@@ -41,12 +41,24 @@ is a local file that only you decide to share.
 
 ## The future: network-using features
 
-Post-MVP features (model download assistance, optional web search providers)
-may involve the network. When they arrive:
+Post-MVP features such as optional web search (`WebSearchProvider`) and model
+download assistance may involve the network. When they arrive:
 
 - They will be off by default.
-- They will ask clearly before any network access.
+- They will ask clearly before any network access (explicit, understandable
+  permission).
 - The local-first defaults documented here will not change.
+- Silent downloads of models or runtimes are never allowed.
 
 Any future network-capable provider will require an explicit user permission
-model, designed and documented before it ships.
+model, designed and documented before it ships. See also
+[capability-map.md](capability-map.md) (navigation/status index) and
+[runtimes-and-routing.md](runtimes-and-routing.md).
+
+Cloud providers, accounts, sync, and telemetry are **not** planned as default
+product behavior. Any optional cloud capability would require an explicit
+future product decision, privacy design, and user permission model.
+
+Agent, workflow, plugin, or tool side effects (when those features are designed)
+require explicit per-action user approval by default; that is a separate
+guardrail from network permission. See [roadmap.md](roadmap.md).
