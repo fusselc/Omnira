@@ -46,6 +46,15 @@ pub const ENGINE_LABEL: &str = "llama.cpp";
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// Child-only Vulkan loader filters. Overlay tools (Discord, Steam, RTSS,
+/// OBS, Overwolf) register implicit layers globally; the loader injects them
+/// into llama-server and `vkCreateDevice` can then fail with ErrorDeviceLost.
+/// Disable filters are evaluated before enable filters, so Optimus remains
+/// available on dual-GPU laptops. Layer filtering requires Vulkan loader
+/// >= 1.3.234 and is silently ignored by older loaders (harmless no-op).
+const VK_LOADER_LAYERS_DISABLE_VALUE: &str = "~implicit~";
+const VK_LOADER_LAYERS_ENABLE_VALUE: &str = "*optimus*";
+
 pub struct ManagedRuntime {
     child: Child,
     pub variant: RuntimeVariant,
@@ -333,7 +342,13 @@ fn build_command(binary: &PathBuf, args: &[String]) -> Command {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
-        .kill_on_drop(true);
+        .kill_on_drop(true)
+        .env("VK_LOADER_LAYERS_DISABLE", VK_LOADER_LAYERS_DISABLE_VALUE)
+        .env("VK_LOADER_LAYERS_ENABLE", VK_LOADER_LAYERS_ENABLE_VALUE);
+    logging::info(
+        "runtime.vulkan_layer_isolation",
+        "VK_LOADER_LAYERS_DISABLE=~implicit~ VK_LOADER_LAYERS_ENABLE=*optimus*",
+    );
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
     cmd
@@ -685,6 +700,33 @@ pub async fn stop(mut rt: ManagedRuntime) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_command_isolates_vulkan_implicit_layers() {
+        let cmd = build_command(&PathBuf::from("llama-server"), &[]);
+        let envs: Vec<(String, Option<String>)> = cmd
+            .as_std()
+            .get_envs()
+            .map(|(key, value)| {
+                (
+                    key.to_string_lossy().into_owned(),
+                    value.map(|v| v.to_string_lossy().into_owned()),
+                )
+            })
+            .collect();
+        assert!(
+            envs.iter().any(|(k, v)| {
+                k == "VK_LOADER_LAYERS_DISABLE" && v.as_deref() == Some("~implicit~")
+            }),
+            "expected VK_LOADER_LAYERS_DISABLE=~implicit~, got {envs:?}"
+        );
+        assert!(
+            envs.iter().any(|(k, v)| {
+                k == "VK_LOADER_LAYERS_ENABLE" && v.as_deref() == Some("*optimus*")
+            }),
+            "expected VK_LOADER_LAYERS_ENABLE=*optimus*, got {envs:?}"
+        );
+    }
 
     #[test]
     fn server_args_bind_loopback_only_with_session_key() {
