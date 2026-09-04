@@ -14,6 +14,14 @@ One installed application, one process tree:
    direct child process with `--host 127.0.0.1 --port <port> --api-key <key>`.
    The child is created with `CREATE_NO_WINDOW` (no console window, ever) and
    null stdin/stdout; there is no `cmd.exe` wrapper and no helper process.
+   The child environment sets `VK_LOADER_LAYERS_DISABLE=~implicit~` and
+   `VK_LOADER_LAYERS_ENABLE=*optimus*` so globally registered overlay Vulkan
+   layers (Discord, Steam, RTSS/MSI Afterburner, OBS, Overwolf) are not
+   injected into this headless compute process. Those variables are never
+   written to the user's global environment. Disable filters run before
+   enable filters, so NVIDIA Optimus stays available on dual-GPU laptops.
+   Layer filtering requires Vulkan loader >= 1.3.234; older loaders ignore
+   the variables (harmless no-op).
 3. The child is assigned to a Windows Job Object with
    `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` at spawn time, guaranteeing cleanup even
    if Omnira crashes or is force-killed.

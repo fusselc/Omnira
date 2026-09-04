@@ -24,6 +24,7 @@ Use this checklist to perform final manual QA sweeps before tagging and publishi
 - [ ] Confirm that the model starts up and transitions to "Ready when you are" or opens the chat inputs.
 - [ ] While the model loads, confirm that **no console or Windows Terminal window appears** at any point, and that none is left open once the model is ready (Task Manager shows a single `llama-server.exe` under `omnira.exe`).
 - [ ] Confirm the status pill reads "Running locally · llama.cpp" and its tooltip names the mode (CPU or GPU (Vulkan)).
+- [ ] With Discord/Steam/RTSS running, load a model — Vulkan must succeed with no ErrorDeviceLost.
 - [ ] Send a message (e.g. "Say hello in one short sentence").
 - [ ] Verify that token generation streams back in real-time.
 - [ ] Test the unmistakable "Stop" generation control: press the Stop button during active generation and verify the stream immediately halts while preserving the partial response.
