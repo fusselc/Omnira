@@ -131,9 +131,9 @@ export function Models({
         <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-brand-border py-16 text-center">
           <h2 className="text-lg font-medium">No models added yet</h2>
           <p className="max-w-md text-sm text-brand-textMuted">
-            Add a .gguf model file from your computer to start chatting. If you
-            do not have one yet, you can download GGUF models from the web with
-            your browser and add them here.
+            Add a .gguf model file from your computer to start chatting. Omnira
+            does not download models. If you already have a GGUF file on disk,
+            choose it here — the file stays where it is.
           </p>
           <button
             onClick={() => void addModel()}

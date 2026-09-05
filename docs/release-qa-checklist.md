@@ -14,7 +14,8 @@ Use this checklist to perform final manual QA sweeps before tagging and publishi
 - [ ] Turn off all network interfaces (disconnect Wi-Fi, unplug Ethernet, or enable Airplane Mode).
 - [ ] Launch Omnira for the first time.
 - [ ] Complete the welcome and privacy onboarding steps.
-- [ ] Verify that a local `.gguf` model can be imported from your local disk.
+- [ ] On Add a model, the primary actions are choose an existing local `.gguf` or skip. There is no in-app download and no Hugging Face (or other) deep link.
+- [ ] Verify that a local `.gguf` model can be imported from your local disk. If you skip, you can add one later from the Models empty state.
 - [ ] Confirm that the model is referenced in-place without triggering network calls or copy operations.
 - [ ] Confirm that onboarding successfully concludes and transitions you to the Chat screen.
 
