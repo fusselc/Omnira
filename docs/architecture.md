@@ -70,8 +70,10 @@ Module boundaries (in `apps/desktop/src-tauri/src/`):
   explicitly (prefix `Vulkan skipped:`) and Advanced Diagnostics offers
   "Try GPU acceleration again", which clears the recorded preference. A CPU
   runtime therefore always carries a fallback reason -- the UI never shows CPU
-  as if it were the only option. No CUDA in MVP (first planned post-MVP runtime
-  addition; see `docs/runtimes-and-routing.md`).
+  as if it were the only option. CUDA is **not shipped**. Phase 6 is the
+  **next approved** addition for the existing ChatProvider only
+  (CUDA -> Vulkan -> CPU on NVIDIA machines); it is not a new provider or
+  screen. See `docs/roadmap.md` and `docs/runtimes-and-routing.md`.
 - `RuntimeStatus.engine_label` names the engine ("llama.cpp") while a runtime
   is starting or running so the UI can show what is actually executing.
 - Started with `--host 127.0.0.1 --api-key <session-secret> --port <reserved>`.

@@ -73,9 +73,10 @@ while other screens are shown so an in-flight response keeps streaming.
 last used, status indicator; missing-file warning; "Remove from Omnira" action
 with copy making clear the file itself is not deleted.
 
-**Settings:** data location, model search paths, privacy defaults, theme,
-optional runtime path override, clear-conversations action, and a short
-local-first explanation.
+**Settings:** a short local-first privacy explanation (no privacy toggles),
+theme, read-only data paths (Omnira data directory, conversations database,
+settings file, logs), optional runtime path override, and a clear-conversations
+action. There is no data-location picker and no model search-path list.
 
 **Advanced Diagnostics:** runtime status, selected accelerator and fallback
 reason, local API port/binding status, selected model metadata, recent runtime
@@ -84,11 +85,12 @@ errors, local log viewer, redacted diagnostic export.
 ## 5. First-run flow
 
 1. Welcome to Omnira.
-2. Local-first, private-by-default explanation in one short screen.
-3. Accept the recommended data location (or choose another).
-4. Select a local GGUF model file -- or skip for now (the Chat empty state
+2. Local-first, private-by-default explanation, plus a read-only display of
+   the data directory under `%LOCALAPPDATA%\Omnira\`. There is no control to
+   choose another location.
+3. Select a local GGUF model file -- or skip for now (the Chat empty state
    handles the skip path gracefully).
-5. Enter Chat.
+4. Enter Chat.
 
 ## 6. Accessibility and tone
 

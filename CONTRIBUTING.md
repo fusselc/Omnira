@@ -7,10 +7,14 @@ run and what we expect from contributions.
 
 Contributions are evaluated against these principles, in this order:
 
-1. **Scope discipline.** The MVP is local GGUF chat on Windows, full stop.
-   Features outside the MVP (image, voice, RAG, agents, downloads, CUDA, plugins)
-   are documented in the roadmap but not accepted as code until their phase begins.
-   PRs that expand active scope will be declined, even if well written.
+1. **Scope discipline.** Shipped scope is local GGUF chat on Windows (Vulkan/CPU
+   managed `llama-server`). **Next approved engineering** is Phase 6 CUDA
+   acceleration for the existing ChatProvider only -- see `AGENTS.md`,
+   `docs/roadmap.md`, and `docs/capability-map.md`. Phase 7 and later (image,
+   Create, voice, RAG, agents, downloads, plugins, ONNX/NPU, and other
+   deferred or later work) stay documented but are not accepted as code until
+   their phase begins. PRs that expand active scope will be declined, even if
+   well written.
 2. **Local-first, private by default.** No telemetry, accounts, cloud sync,
    crash upload, update checks, or external network calls by default. Any PR that
    introduces a default network call will be declined.
