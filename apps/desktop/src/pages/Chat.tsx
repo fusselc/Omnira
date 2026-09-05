@@ -687,8 +687,7 @@ export function Chat({
             <div className="flex items-center justify-between rounded-xl border border-accent-warning/30 bg-accent-warning/5 px-4 py-3 text-sm text-zinc-200">
               <div className="flex flex-wrap items-center gap-2">
                 <span>
-                  Running on CPU. Responses may be slower than with GPU
-                  acceleration.
+                  Running on CPU. Responses may take longer on this computer.
                 </span>
                 <button
                   onClick={onGoToDiagnostics}

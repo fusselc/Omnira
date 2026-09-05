@@ -29,7 +29,9 @@ Power exists, but it waits to be asked for.
   it never claims an engine Omnira does not ship (no ONNX, no CUDA in MVP).
 - The main UI may say the engine is **on CPU** when it is (the dismissible
   "Running on CPU" notice), because hiding a slower mode would be dishonest.
-  It does not otherwise name GPU vendors or backends.
+  That notice must not compare Chat against "GPU acceleration" or name
+  backends; it only says responses may take longer on this computer. It does
+  not otherwise name GPU vendors or backends.
 - Advanced Diagnostics is the place that names the accelerator in full:
   "GPU acceleration (Vulkan)" or "CPU mode", plus the fallback reason
   (including the engine's startup output when a variant failed) and the
