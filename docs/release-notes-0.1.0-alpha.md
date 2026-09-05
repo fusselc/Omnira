@@ -1,5 +1,9 @@
 # Omnira 0.1.0 (internal alpha)
 
+Commits on `main` after this tag are summarized in
+[release-notes-since-0.1.0-alpha.md](release-notes-since-0.1.0-alpha.md)
+(proposed next tag: `v0.1.1-alpha`; not cut yet).
+
 - **Date:** 2026-07-27
 - **Artifact:** `Omnira_0.1.0_x64-setup.exe` (NSIS, per-machine)
 - **Audience:** maintainer and invited testers only

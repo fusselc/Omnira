@@ -14,6 +14,8 @@ Advanced Diagnostics, and a packaged internal alpha (`v0.1.0-alpha`). Maintainer
 Sign-Off is recorded in
 [docs/alpha-readiness-checklist.md](docs/alpha-readiness-checklist.md). Release
 notes: [docs/release-notes-0.1.0-alpha.md](docs/release-notes-0.1.0-alpha.md).
+Work on `main` since that tag (not yet a new release):
+[docs/release-notes-since-0.1.0-alpha.md](docs/release-notes-since-0.1.0-alpha.md).
 
 **Next approved engineering:** Phase 6 -- CUDA acceleration for the **existing
 ChatProvider only** (same Chat UI; accelerator detail in Advanced Diagnostics).
