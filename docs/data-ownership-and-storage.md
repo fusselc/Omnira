@@ -41,15 +41,16 @@ SQLite database should not ride along with roaming profile sync.
 
 `config\settings.json` stores user-editable preferences:
 
-- Model search paths
-- Data location display
-- Privacy settings
 - Theme preference
 - Advanced runtime preferences (custom runtime path override, recorded working
   runtime variant)
+- Onboarding complete flag
 - Session continuity: the conversation id to reopen on next launch, cleared
   automatically when that conversation is deleted
-- Feature flags
+
+Data paths are not stored as preferences. They are derived from
+`%LOCALAPPDATA%\Omnira\` and shown read-only on Settings. There is no model
+search-path list and no user-chosen data location.
 
 ## 4. Logs
 

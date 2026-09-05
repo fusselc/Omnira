@@ -49,13 +49,12 @@ The Rust core will maintain a runtime router:
 - Routing decisions are logged and visible in Advanced Diagnostics; the main
   UI shows only task-oriented status ("Running locally").
 
-Hardware-aware routing arrives incrementally starting Phase 6: prefer NPU on
-Copilot+ PCs for ONNX workloads, prefer CUDA on NVIDIA for heavy workloads,
-fall back to Vulkan and then CPU.
+**Phase 6 scope (next approved):** GGUF chat only. On NVIDIA machines, prefer
+CUDA then Vulkan then CPU. Phase 6 does not add ONNX, NPU, Windows ML, or
+other modalities.
 
-**Phase 6 scope (next approved):** for GGUF chat only, prefer CUDA then Vulkan
-then CPU when an NVIDIA GPU is detected. Broader modality routing lands with
-later phases.
+Broader hardware-aware routing -- prefer NPU on Copilot+ PCs for ONNX
+workloads, then other modality routing -- is Phase 8 and later, not Phase 6.
 
 In the shipped alpha, "routing" is Vulkan -> CPU for a single worker type,
 implemented so additional backends are additive data, not architectural
