@@ -28,8 +28,10 @@ Power exists, but it waits to be asked for.
   "Running locally · llama.cpp" so it never looks like nothing is running, and
   it never claims an engine Omnira does not ship (no ONNX, no CUDA in MVP).
 - The main UI may say the engine is **on CPU** when it is (the dismissible
-  "Running on CPU" notice), because hiding a slower mode would be dishonest.
-  It does not otherwise name GPU vendors or backends.
+  "Running on CPU. Responses may take longer on this computer." notice),
+  because hiding a slower mode would be dishonest. That notice describes the
+  current mode only; it does not compare against "GPU acceleration" or name
+  GPU vendors or backends -- that detail belongs in Advanced Diagnostics.
 - Advanced Diagnostics is the place that names the accelerator in full:
   "GPU acceleration (Vulkan)" or "CPU mode", plus the fallback reason
   (including the engine's startup output when a variant failed) and the
