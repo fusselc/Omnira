@@ -48,15 +48,22 @@ on a Windows machine after building or installing:
 
 ## 2. Bundled runtime
 
-Two pinned llama.cpp `llama-server` Windows builds ship in the installer:
+Three llama-server variant slots exist; two are pinned and shipped today:
 
-- **Vulkan x64** -- GPU acceleration on NVIDIA, AMD, and Intel GPUs.
-- **CPU x64 (AVX2)** -- universal fallback.
+- **Vulkan x64** -- GPU acceleration on NVIDIA, AMD, and Intel GPUs (shipped).
+- **CPU x64 (AVX2)** -- universal fallback (shipped).
+- **CUDA x64** -- Phase 6 slot. Tauri maps `binaries/cuda` -> `runtimes/cuda`.
+  The fetch script does **not** download this variant until an official
+  llama.cpp Windows CUDA artifact name and SHA-256 are pinned (see the TODO
+  in `scripts/packaging/fetch-llama-server.ps1`). Do not invent checksums or
+  commit binaries.
 
 Selection: try Vulkan first; on health-check failure (missing/old drivers),
 fall back to CPU automatically and record the working variant in config.
-The runtime manager treats variants as additive data so future backends (CUDA)
-require no architectural change.
+When a CUDA `llama-server.exe` is present on disk, selection is CUDA then
+Vulkan then CPU. NVIDIA device detection is not wired yet — binary presence
+is the only CUDA gate. Clearing a recorded CPU preference ("Try GPU
+acceleration again") retries the higher-priority GPU variants.
 
 Current pin: llama.cpp release tag `b9859`
 (commit `4fc4ec5541b243957ae5099edb67372f8f3b550e`). Artifact names and SHA-256

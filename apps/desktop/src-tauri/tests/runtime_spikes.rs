@@ -226,7 +226,7 @@ async fn runtime_restart_cycles_cleanly() {
     println!("restart: port {} -> {}", port1, rt2.port);
     assert!(matches!(
         rt2.variant,
-        RuntimeVariant::Vulkan | RuntimeVariant::Cpu
+        RuntimeVariant::Cuda | RuntimeVariant::Vulkan | RuntimeVariant::Cpu
     ));
     runtime::stop(rt2).await;
 }

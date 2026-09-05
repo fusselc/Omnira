@@ -4,6 +4,7 @@ import {
   fallbackExplanation,
   prefersCpuFromEarlierLaunch,
   variantBadge,
+  variantSelectionOrder,
   VULKAN_SKIPPED_PREFIX,
 } from "./diagnosticsDisplay";
 
@@ -32,14 +33,44 @@ describe("engine display", () => {
   });
 
   it("labels the accelerator honestly", () => {
+    expect(variantBadge("cuda", "GPU (CUDA)")).toEqual({
+      label: "GPU acceleration (CUDA)",
+      tone: "cuda",
+    });
     expect(variantBadge("vulkan", "GPU (Vulkan)").label).toBe("GPU acceleration (Vulkan)");
     expect(variantBadge("cpu", "CPU").label).toBe("CPU mode");
     expect(variantBadge(null, null).label).toBe("Not running");
   });
 
-  it("only offers the Vulkan retry when CPU is the remembered preference", () => {
+  it("does not treat every non-CPU accelerator label as Vulkan", () => {
+    expect(variantBadge(null, "GPU (CUDA)").tone).toBe("cuda");
+    expect(variantBadge(null, "GPU (Vulkan)").tone).toBe("vulkan");
+    expect(variantBadge(null, "CPU").tone).toBe("cpu");
+    expect(variantBadge(null, "Unknown accelerator").tone).toBe("none");
+  });
+
+  it("only offers the GPU retry when CPU is the remembered preference", () => {
     expect(prefersCpuFromEarlierLaunch("cpu")).toBe(true);
     expect(prefersCpuFromEarlierLaunch("vulkan")).toBe(false);
+    expect(prefersCpuFromEarlierLaunch("cuda")).toBe(false);
     expect(prefersCpuFromEarlierLaunch(null)).toBe(false);
+  });
+});
+
+describe("variantSelectionOrder", () => {
+  it("uses CUDA → Vulkan → CPU when a CUDA binary is present", () => {
+    expect(variantSelectionOrder(null, true)).toEqual(["cuda", "vulkan", "cpu"]);
+    expect(variantSelectionOrder("vulkan", true)).toEqual(["cuda", "vulkan", "cpu"]);
+  });
+
+  it("keeps Vulkan → CPU when no CUDA binary is present", () => {
+    expect(variantSelectionOrder(null, false)).toEqual(["vulkan", "cpu"]);
+    expect(variantSelectionOrder("cuda", false)).toEqual(["vulkan", "cpu"]);
+  });
+
+  it("starts on CPU when that is preferred, then retries higher-priority GPUs after clear", () => {
+    expect(variantSelectionOrder("cpu", true)).toEqual(["cpu", "cuda", "vulkan"]);
+    expect(variantSelectionOrder("cpu", false)).toEqual(["cpu", "vulkan"]);
+    expect(variantSelectionOrder(null, true)[0]).toBe("cuda");
   });
 });

@@ -15,7 +15,7 @@ export interface RuntimeStateSummary {
 
 export interface VariantBadge {
   label: string;
-  tone: "vulkan" | "cpu" | "none";
+  tone: "cuda" | "vulkan" | "cpu" | "none";
 }
 
 export interface FallbackExplanation {
@@ -53,20 +53,56 @@ export function variantBadge(
   variant: RuntimeVariant | null,
   acceleratorLabel: string | null,
 ): VariantBadge {
-  if (variant === "vulkan") {
-    return { label: "GPU acceleration (Vulkan)", tone: "vulkan" };
-  }
-  if (variant === "cpu") {
-    return { label: "CPU mode", tone: "cpu" };
+  switch (variant) {
+    case "cuda":
+      return { label: "GPU acceleration (CUDA)", tone: "cuda" };
+    case "vulkan":
+      return { label: "GPU acceleration (Vulkan)", tone: "vulkan" };
+    case "cpu":
+      return { label: "CPU mode", tone: "cpu" };
+    case null:
+      break;
+    default: {
+      const _exhaustive: never = variant;
+      return _exhaustive;
+    }
   }
   if (acceleratorLabel) {
-    const lower = acceleratorLabel.toLowerCase();
-    if (lower.includes("cpu")) {
-      return { label: acceleratorLabel, tone: "cpu" };
-    }
-    return { label: acceleratorLabel, tone: "vulkan" };
+    return { label: acceleratorLabel, tone: toneFromAcceleratorLabel(acceleratorLabel) };
   }
   return { label: "Not running", tone: "none" };
+}
+
+/** Infer badge tone from a core accelerator_label when variant is missing. */
+function toneFromAcceleratorLabel(acceleratorLabel: string): VariantBadge["tone"] {
+  const lower = acceleratorLabel.toLowerCase();
+  if (lower.includes("cpu")) {
+    return "cpu";
+  }
+  if (lower.includes("cuda")) {
+    return "cuda";
+  }
+  if (lower.includes("vulkan")) {
+    return "vulkan";
+  }
+  return "none";
+}
+
+/**
+ * Mirrors `runtime::variant_selection_order`. Used by Diagnostics tests; the
+ * Rust core is authoritative at spawn time.
+ */
+export function variantSelectionOrder(
+  preferred: RuntimeVariant | null,
+  cudaBinaryPresent: boolean,
+): RuntimeVariant[] {
+  const gpu: RuntimeVariant[] = cudaBinaryPresent
+    ? ["cuda", "vulkan"]
+    : ["vulkan"];
+  if (preferred === "cpu") {
+    return ["cpu", ...gpu];
+  }
+  return [...gpu, "cpu"];
 }
 
 /** The core marks a CPU start that never attempted Vulkan with this prefix. */
@@ -139,11 +175,17 @@ export function resolveLoadedModel(
 
 export function variantBadgeClass(tone: VariantBadge["tone"]): string {
   switch (tone) {
+    case "cuda":
+      return "bg-accent-primary/15 text-accent-primary";
     case "vulkan":
       return "bg-accent-primary/15 text-accent-primary";
     case "cpu":
       return "bg-accent-warning/15 text-accent-warning";
-    default:
+    case "none":
       return "bg-brand-hover text-brand-textMuted";
+    default: {
+      const _exhaustive: never = tone;
+      return _exhaustive;
+    }
   }
 }
