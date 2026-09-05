@@ -101,19 +101,17 @@ export function FirstRun({
             </div>
             <div className="space-y-2">
               <p className="text-sm text-brand-textMuted">
-                Omnira runs local AI models in the <span className="font-semibold text-zinc-300">.gguf</span> format. 
-                If you don't have one, you can download models like Llama 3 or Mistral from Hugging Face.
+                Choose a <span className="font-semibold text-zinc-300">.gguf</span>{" "}
+                model file already on this computer, or skip and add one later
+                from Models.
               </p>
-              <a 
-                href="https://huggingface.co/models?search=gguf" 
-                target="_blank" 
-                rel="noreferrer"
-                className="inline-block text-xs text-accent-primary hover:underline"
-              >
-                Browse GGUF models on Hugging Face &rarr;
-              </a>
               <p className="text-xs text-zinc-500">
-                Tip: A 4GB to 8GB file (e.g. 7B to 8B parameter models) is a good starting point for most computers.
+                Omnira does not download models. It only references the file
+                where it already is.
+              </p>
+              <p className="text-xs text-zinc-500">
+                A 4GB to 8GB file (for example a 7B to 8B parameter model) is a
+                reasonable starting point on most computers.
               </p>
             </div>
             {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
