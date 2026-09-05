@@ -92,20 +92,21 @@ older loaders treat the variables as a no-op.
 - Vitest coverage for truncation, markdown safety, theme, and mount policy.
 - Browser mock backend: Models list refreshes after add (dev/mock only).
 
-## Open follow-up PRs (not merged)
+## Follow-up PRs
 
-Do not treat these as part of a tag cut from current `main`. If they merge
-first, fold them into the tag notes.
+[#29](https://github.com/fusselc/Omnira/pull/29),
+[#30](https://github.com/fusselc/Omnira/pull/30), and
+[#31](https://github.com/fusselc/Omnira/pull/31) are small copy/docs PRs
+landing together with these notes. They are not lingering open follow-ups.
 
-| PR | Title | Status |
-|---|---|---|
-| [#29](https://github.com/fusselc/Omnira/pull/29) | Remove GPU comparison from Chat CPU fallback notice | Open |
-| [#30](https://github.com/fusselc/Omnira/pull/30) | Align first-run Add a model step with offline privacy | Open |
-| [#31](https://github.com/fusselc/Omnira/pull/31) | Align FirstRun/Settings docs and Phase 6 CUDA contributor status | Open |
-| [#32](https://github.com/fusselc/Omnira/pull/32) | Phase 6 prep: additive CUDA `RuntimeVariant` for ChatProvider | Open |
+The remaining follow-ups are:
 
-#29 would change the CPU notice string that section 4 of the QA checklist
-still quotes. #32 is scaffolding toward Phase 6; it is not CUDA shipping.
+- [PR #32](https://github.com/fusselc/Omnira/pull/32) — additive CUDA
+  `RuntimeVariant` scaffolding for ChatProvider. Separate review; not part of
+  this notes land. Scaffolding only; it is not CUDA shipping.
+- The Phase 6 work #32 defers — official llama.cpp CUDA artifact pin +
+  SHA-256, NVIDIA detection, and cudart DLL merge (the pieces worth
+  salvaging from older [PR #23](https://github.com/fusselc/Omnira/pull/23)).
 
 ## Re-run before tagging
 
