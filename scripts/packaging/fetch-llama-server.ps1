@@ -1,6 +1,7 @@
 # fetch-llama-server.ps1
 #
-# Downloads the pinned llama.cpp llama-server Windows builds (Vulkan + CPU),
+# Downloads the pinned llama.cpp llama-server Windows builds (Vulkan + CPU;
+# CUDA is a reserved third slot — see TODO below),
 # verifies them against pinned SHA-256 checksums, and extracts them into
 # apps/desktop/src-tauri/binaries/ for bundling as Tauri resources.
 #
@@ -29,6 +30,16 @@ $Artifacts = @(
         Sha256  = "c9aa80f233a7d1749341860f11723b912d4cfd6eec19434c3d00bba0abc9f85c"
         Variant = "cpu"
     }
+    # TODO(Phase 6): pin the official llama.cpp Windows CUDA zip for $PinnedTag
+    # and its SHA-256. Do not invent artifact names or checksums. NVIDIA GPU
+    # detection is not wired yet; the runtime manager only treats CUDA as
+    # available when binaries/cuda/llama-server.exe exists after a verified
+    # fetch. When the pin is known, append:
+    #   @{
+    #       Name    = "<official cuda zip name for $PinnedTag>"
+    #       Sha256  = "<official sha256 — do not invent>"
+    #       Variant = "cuda"
+    #   }
 )
 
 $BaseUrl = "https://github.com/ggml-org/llama.cpp/releases/download/$PinnedTag"
@@ -106,6 +117,12 @@ valid checksum matches the pinned artifact. Refusing to continue.
     Write-Host "[ready ] $($artifact.Variant): $(Join-Path $extractDir 'llama-server.exe')"
 }
 
+# Reserve the CUDA resource slot (tauri.conf.json binaries/cuda -> runtimes/cuda)
+# without downloading an unpinned artifact.
+$CudaPlaceholder = Join-Path $BinDir "cuda"
+New-Item -ItemType Directory -Force -Path $CudaPlaceholder | Out-Null
+
 Write-Host ""
 Write-Host "All runtimes fetched and verified for release $PinnedTag."
+Write-Host "CUDA slot reserved at $CudaPlaceholder (empty until an official pin + SHA is added)."
 Write-Host "Binaries directory: $BinDir (gitignored -- never commit binaries)."

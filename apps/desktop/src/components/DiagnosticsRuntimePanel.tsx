@@ -90,7 +90,7 @@ export function DiagnosticsRuntimePanel({
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-border px-4 py-3">
           <p className="text-xs text-brand-textMuted">
             Omnira remembers that CPU worked and starts with it. Retry GPU
-            acceleration (Vulkan) the next time a model is loaded.
+            acceleration the next time a model is loaded.
           </p>
           <button
             type="button"
@@ -103,8 +103,8 @@ export function DiagnosticsRuntimePanel({
       )}
       {resetDone && (
         <p className="mt-3 text-xs text-accent-success">
-          Vulkan will be tried first on the next model load. Reload the model
-          from Models or Chat to apply.
+          Higher-priority GPU variants will be tried first on the next model
+          load. Reload the model from Models or Chat to apply.
         </p>
       )}
 

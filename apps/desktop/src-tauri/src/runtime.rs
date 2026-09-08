@@ -1,6 +1,7 @@
 //! Managed llama-server lifecycle (docs/architecture.md sections 2, 4, 5).
 //!
-//! Responsibilities: runtime variant selection (Vulkan -> CPU fallback),
+//! Responsibilities: runtime variant selection (CUDA -> Vulkan -> CPU when a
+//! CUDA binary is present; otherwise Vulkan -> CPU),
 //! loopback port reservation, per-session api-key generation, spawn under the
 //! Job Object, health gating, shutdown, and status snapshots.
 
@@ -144,10 +145,7 @@ fn runtime_binary(
         ));
     }
 
-    let dir_name = match variant {
-        RuntimeVariant::Vulkan => "vulkan",
-        RuntimeVariant::Cpu => "cpu",
-    };
+    let dir_name = variant_dir_name(variant);
 
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Some(res) = resource_dir {
@@ -161,26 +159,32 @@ fn runtime_binary(
             .join("llama-server.exe"),
     );
 
-    candidates
-        .into_iter()
-        .find(|p| p.is_file())
-        .ok_or_else(|| {
-            AppError::new(
-                ErrorCode::RuntimeMissing,
-                Some(format!("no {dir_name} llama-server.exe found")),
-            )
-        })
+    candidates.into_iter().find(|p| p.is_file()).ok_or_else(|| {
+        AppError::new(
+            ErrorCode::RuntimeMissing,
+            Some(format!("no {dir_name} llama-server.exe found")),
+        )
+    })
 }
 
 /// Reserve a free loopback port (Decision 12): bind port 0, read the assigned
 /// port, release the socket. The release-to-spawn race is handled by bounded
 /// retries in `start`.
 fn reserve_port() -> Result<u16, AppError> {
-    let listener = TcpListener::bind(("127.0.0.1", 0))
-        .map_err(|e| AppError::new(ErrorCode::RuntimeFailedToStart, Some(format!("port reservation: {e}"))))?;
+    let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| {
+        AppError::new(
+            ErrorCode::RuntimeFailedToStart,
+            Some(format!("port reservation: {e}")),
+        )
+    })?;
     let port = listener
         .local_addr()
-        .map_err(|e| AppError::new(ErrorCode::RuntimeFailedToStart, Some(format!("port reservation: {e}"))))?
+        .map_err(|e| {
+            AppError::new(
+                ErrorCode::RuntimeFailedToStart,
+                Some(format!("port reservation: {e}")),
+            )
+        })?
         .port();
     drop(listener);
     Ok(port)
@@ -190,7 +194,8 @@ fn generate_api_key() -> String {
     let mut rng = rand::rng();
     (0..48)
         .map(|_| {
-            const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+            const CHARSET: &[u8] =
+                b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
             CHARSET[rng.random_range(0..CHARSET.len())] as char
         })
         .collect()
@@ -241,10 +246,7 @@ impl StderrTail {
 
     fn stop_capturing(&self) {
         self.capturing.store(false, Ordering::Relaxed);
-        self.bytes
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .clear();
+        self.bytes.lock().unwrap_or_else(|p| p.into_inner()).clear();
     }
 
     /// Last few non-empty lines, single-spaced, for an error detail string.
@@ -288,7 +290,10 @@ async fn wait_healthy(
 
         // Detect early exit (bind race, model load failure, OOM...).
         if let Some(status) = child.try_wait().map_err(|e| {
-            AppError::new(ErrorCode::RuntimeFailedToStart, Some(format!("try_wait: {e}")))
+            AppError::new(
+                ErrorCode::RuntimeFailedToStart,
+                Some(format!("try_wait: {e}")),
+            )
         })? {
             // Give the reader task a moment to flush the final stderr lines.
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -416,7 +421,10 @@ async fn spawn_variant(
             }
             Err(StartFailure::Cancelled) => {
                 kill_and_reap(&mut child).await;
-                logging::info("runtime.start_cancelled", &format!("variant={variant:?} port={port}"));
+                logging::info(
+                    "runtime.start_cancelled",
+                    &format!("variant={variant:?} port={port}"),
+                );
                 return Err(StartFailure::Cancelled);
             }
             Err(StartFailure::Error(e)) => {
@@ -436,7 +444,10 @@ async fn spawn_variant(
 
     Err(last_err
         .unwrap_or_else(|| {
-            AppError::new(ErrorCode::RuntimeFailedToStart, Some("spawn attempts exhausted".into()))
+            AppError::new(
+                ErrorCode::RuntimeFailedToStart,
+                Some("spawn attempts exhausted".into()),
+            )
         })
         .into())
 }
@@ -452,10 +463,7 @@ impl RuntimeManager {
             Self::mark_unavailable(inner, "runtime handle missing while ready".into());
             return;
         }
-        let waited = inner
-            .runtime
-            .as_mut()
-            .map(|rt| rt.child.try_wait());
+        let waited = inner.runtime.as_mut().map(|rt| rt.child.try_wait());
         let detail = match waited {
             Some(Ok(None)) => return,
             Some(Ok(Some(status))) => format!("llama-server exited: {status}"),
@@ -468,10 +476,7 @@ impl RuntimeManager {
     fn mark_unavailable(inner: &mut Inner, detail: String) {
         logging::error("runtime.unavailable", &detail);
         inner.state = RuntimeState::Error;
-        inner.last_error = Some(AppError::new(
-            ErrorCode::BackendUnavailable,
-            Some(detail),
-        ));
+        inner.last_error = Some(AppError::new(ErrorCode::BackendUnavailable, Some(detail)));
         inner.runtime = None;
     }
 
@@ -575,10 +580,49 @@ impl RuntimeManager {
     }
 }
 
+pub fn variant_dir_name(variant: RuntimeVariant) -> &'static str {
+    match variant {
+        RuntimeVariant::Cuda => "cuda",
+        RuntimeVariant::Vulkan => "vulkan",
+        RuntimeVariant::Cpu => "cpu",
+    }
+}
+
 pub fn accelerator_label(variant: RuntimeVariant) -> &'static str {
     match variant {
+        RuntimeVariant::Cuda => "GPU (CUDA)",
         RuntimeVariant::Vulkan => "GPU (Vulkan)",
         RuntimeVariant::Cpu => "CPU",
+    }
+}
+
+/// Selection order for managed llama-server.
+///
+/// When a CUDA binary is on disk (`binaries/cuda` / `runtimes/cuda`), try
+/// CUDA then Vulkan then CPU. Otherwise keep today's Vulkan then CPU order.
+/// A recorded CPU preference starts on CPU; clearing it (Diagnostics
+/// "Try GPU acceleration again") retries the higher-priority GPU variants.
+/// NVIDIA device detection is not wired yet — binary presence is the only gate.
+pub fn variant_selection_order(
+    preferred: Option<RuntimeVariant>,
+    cuda_binary_present: bool,
+) -> Vec<RuntimeVariant> {
+    let mut gpu = if cuda_binary_present {
+        vec![RuntimeVariant::Cuda, RuntimeVariant::Vulkan]
+    } else {
+        vec![RuntimeVariant::Vulkan]
+    };
+
+    match preferred {
+        Some(RuntimeVariant::Cpu) => {
+            let mut order = vec![RuntimeVariant::Cpu];
+            order.append(&mut gpu);
+            order
+        }
+        Some(RuntimeVariant::Cuda) | Some(RuntimeVariant::Vulkan) | None => {
+            gpu.push(RuntimeVariant::Cpu);
+            gpu
+        }
     }
 }
 
@@ -587,8 +631,9 @@ pub fn context_chars_budget(ctx_size: u64) -> u64 {
     usable * CHARS_PER_TOKEN
 }
 
-/// Start llama-server for the given model: Vulkan first, CPU fallback
-/// (Decision 9). The working variant and any fallback reason are recorded.
+/// Start llama-server for the given model: CUDA (if present) then Vulkan,
+/// then CPU (Decision 9 / Phase 6 prep). The working variant and any
+/// CPU-path fallback reason are recorded.
 pub async fn start(
     resource_dir: Option<PathBuf>,
     override_path: Option<String>,
@@ -631,11 +676,10 @@ pub async fn start_cancellable(
         _ => DEFAULT_CTX_SIZE,
     };
 
-    // Variant order: recorded working variant first if any, else Vulkan -> CPU.
-    let order: Vec<RuntimeVariant> = match preferred {
-        Some(RuntimeVariant::Cpu) => vec![RuntimeVariant::Cpu, RuntimeVariant::Vulkan],
-        _ => vec![RuntimeVariant::Vulkan, RuntimeVariant::Cpu],
-    };
+    // Binary presence only — do not treat a Settings override path as CUDA.
+    let cuda_binary_present =
+        runtime_binary(resource_dir.as_ref(), None, RuntimeVariant::Cuda).is_ok();
+    let order = variant_selection_order(preferred, cuda_binary_present);
 
     let mut first_failure: Option<(RuntimeVariant, AppError)> = None;
 
@@ -670,24 +714,29 @@ pub async fn start_cancellable(
         .unwrap_or_else(|| AppError::new(ErrorCode::RuntimeMissing, None)))
 }
 
-/// Why the runtime is not on the GPU path, if it is not. Always populated for
+/// Why the runtime is not on a GPU path, if it is not. Always populated for
 /// a CPU runtime so the UI can say "running on CPU" honestly -- including when
-/// Vulkan was never attempted because CPU was the recorded working variant.
+/// GPU variants were never attempted because CPU was the recorded working
+/// variant. GPU-to-GPU fallback (CUDA -> Vulkan) does not set this; that
+/// detail is not a CPU fallback.
 fn fallback_reason(
     variant: RuntimeVariant,
     first_failure: Option<&(RuntimeVariant, AppError)>,
 ) -> Option<String> {
-    match (variant, first_failure) {
-        (_, Some((failed_variant, err))) => Some(format!(
-            "{failed_variant:?} unavailable: {}",
-            err.detail.clone().unwrap_or_default()
-        )),
-        (RuntimeVariant::Cpu, None) => Some(
-            "Vulkan skipped: CPU was recorded as the working runtime on an earlier launch. \
-             Use \"Try GPU acceleration again\" in Advanced Diagnostics to retry Vulkan."
-                .to_string(),
-        ),
-        (RuntimeVariant::Vulkan, None) => None,
+    match variant {
+        RuntimeVariant::Cpu => match first_failure {
+            Some((failed_variant, err)) => Some(format!(
+                "{failed_variant:?} unavailable: {}",
+                err.detail.clone().unwrap_or_default()
+            )),
+            None => Some(
+                "Vulkan skipped: CPU was recorded as the working runtime on an earlier launch. \
+                 Use \"Try GPU acceleration again\" in Advanced Diagnostics to retry \
+                 higher-priority GPU variants."
+                    .to_string(),
+            ),
+        },
+        RuntimeVariant::Cuda | RuntimeVariant::Vulkan => None,
     }
 }
 
@@ -700,6 +749,18 @@ pub async fn stop(mut rt: ManagedRuntime) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cuda_variant_serializes_as_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&RuntimeVariant::Cuda).unwrap(),
+            "\"cuda\""
+        );
+        assert_eq!(
+            serde_json::from_str::<RuntimeVariant>("\"cuda\"").unwrap(),
+            RuntimeVariant::Cuda
+        );
+    }
 
     #[test]
     fn build_command_isolates_vulkan_implicit_layers() {
@@ -749,7 +810,10 @@ mod tests {
 
         tail.stop_capturing();
         tail.push(b"request: POST /v1/chat/completions\n");
-        assert!(tail.summary().is_none(), "nothing may be retained after ready");
+        assert!(
+            tail.summary().is_none(),
+            "nothing may be retained after ready"
+        );
     }
 
     #[test]
@@ -773,8 +837,91 @@ mod tests {
 
         let skipped = fallback_reason(RuntimeVariant::Cpu, None).unwrap();
         assert!(skipped.contains("Vulkan skipped"));
+        assert!(skipped.contains("Try GPU acceleration again"));
 
         assert!(fallback_reason(RuntimeVariant::Vulkan, None).is_none());
+        assert!(fallback_reason(RuntimeVariant::Cuda, None).is_none());
+        // CUDA -> Vulkan is still a GPU path; do not surface a CPU fallback notice.
+        let cuda_failed = (
+            RuntimeVariant::Cuda,
+            AppError::new(
+                ErrorCode::RuntimeFailedToStart,
+                Some("no nvcc device".into()),
+            ),
+        );
+        assert!(fallback_reason(RuntimeVariant::Vulkan, Some(&cuda_failed)).is_none());
+    }
+
+    #[test]
+    fn variant_selection_order_is_cuda_then_vulkan_then_cpu_when_cuda_binary_exists() {
+        assert_eq!(
+            variant_selection_order(None, true),
+            vec![
+                RuntimeVariant::Cuda,
+                RuntimeVariant::Vulkan,
+                RuntimeVariant::Cpu
+            ]
+        );
+        assert_eq!(
+            variant_selection_order(Some(RuntimeVariant::Vulkan), true),
+            vec![
+                RuntimeVariant::Cuda,
+                RuntimeVariant::Vulkan,
+                RuntimeVariant::Cpu
+            ]
+        );
+        assert_eq!(
+            variant_selection_order(Some(RuntimeVariant::Cuda), true),
+            vec![
+                RuntimeVariant::Cuda,
+                RuntimeVariant::Vulkan,
+                RuntimeVariant::Cpu
+            ]
+        );
+    }
+
+    #[test]
+    fn variant_selection_order_stays_vulkan_then_cpu_without_cuda_binary() {
+        assert_eq!(
+            variant_selection_order(None, false),
+            vec![RuntimeVariant::Vulkan, RuntimeVariant::Cpu]
+        );
+        assert_eq!(
+            variant_selection_order(Some(RuntimeVariant::Cuda), false),
+            vec![RuntimeVariant::Vulkan, RuntimeVariant::Cpu]
+        );
+    }
+
+    #[test]
+    fn clearing_cpu_preference_retries_higher_priority_gpus() {
+        assert_eq!(
+            variant_selection_order(Some(RuntimeVariant::Cpu), false),
+            vec![RuntimeVariant::Cpu, RuntimeVariant::Vulkan]
+        );
+        assert_eq!(
+            variant_selection_order(Some(RuntimeVariant::Cpu), true),
+            vec![
+                RuntimeVariant::Cpu,
+                RuntimeVariant::Cuda,
+                RuntimeVariant::Vulkan
+            ]
+        );
+        // Diagnostics "Try GPU acceleration again" sets preferred to None.
+        assert_eq!(
+            variant_selection_order(None, true).first().copied(),
+            Some(RuntimeVariant::Cuda)
+        );
+        assert_eq!(
+            variant_selection_order(None, false).first().copied(),
+            Some(RuntimeVariant::Vulkan)
+        );
+    }
+
+    #[test]
+    fn accelerator_label_names_cuda_for_diagnostics() {
+        assert_eq!(accelerator_label(RuntimeVariant::Cuda), "GPU (CUDA)");
+        assert_eq!(accelerator_label(RuntimeVariant::Vulkan), "GPU (Vulkan)");
+        assert_eq!(accelerator_label(RuntimeVariant::Cpu), "CPU");
     }
 
     #[test]
@@ -801,10 +948,7 @@ mod tests {
         assert!(!second.is_cancelled());
 
         // A stale failure must not clobber the newer attempt's state.
-        manager.finish_start_error(
-            &first,
-            AppError::new(ErrorCode::RuntimeFailedToStart, None),
-        );
+        manager.finish_start_error(&first, AppError::new(ErrorCode::RuntimeFailedToStart, None));
         assert_eq!(manager.status().state, RuntimeState::Starting);
 
         manager.finish_start_error(
