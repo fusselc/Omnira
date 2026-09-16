@@ -14,7 +14,7 @@ use crate::runtime::{self, RuntimeManager};
 use crate::storage::Storage;
 use crate::types::{
     ChatEndpoint, Conversation, DiagnosticsSnapshot, Message, MessageRole, MessageStatus,
-    ModelEntry, RuntimeStatus, Settings,
+    ModelEntry, RuntimeState, RuntimeStatus, Settings,
 };
 
 pub struct AppState {
@@ -65,16 +65,19 @@ pub fn add_model(state: State<AppState>, path: String) -> Result<ModelEntry, App
     let file_path = std::path::PathBuf::from(&path);
     let info = gguf::inspect(&file_path)?;
     let size = std::fs::metadata(&file_path)?.len();
-    let name = info
-        .model_name
-        .clone()
-        .unwrap_or_else(|| {
-            file_path
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| "Model".to_string())
-        });
-    logging::info("model.add", &format!("gguf v{} ctx={:?}", info.version, info.trained_context_length));
+    let name = info.model_name.clone().unwrap_or_else(|| {
+        file_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Model".to_string())
+    });
+    logging::info(
+        "model.add",
+        &format!(
+            "gguf v{} ctx={:?}",
+            info.version, info.trained_context_length
+        ),
+    );
     state
         .storage
         .add_model(&name, &path, size, info.trained_context_length)
@@ -117,7 +120,9 @@ pub fn create_conversation(
     title: String,
     model_id: Option<String>,
 ) -> Result<Conversation, AppError> {
-    state.storage.create_conversation(&title, model_id.as_deref())
+    state
+        .storage
+        .create_conversation(&title, model_id.as_deref())
 }
 
 #[tauri::command]
@@ -207,74 +212,57 @@ pub fn chat_endpoint(state: State<AppState>) -> Result<ChatEndpoint, AppError> {
 }
 
 /// Start (or switch) the managed llama-server for a registered model.
-/// One loaded model at a time: a running runtime is stopped first.
+/// One loaded model at a time: a running runtime is stopped first, except
+/// when this model is already ready (or its start is already in flight).
 #[tauri::command]
 pub async fn start_runtime(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     model_id: String,
 ) -> Result<RuntimeStatus, AppError> {
-    let model = state
-        .storage
-        .get_model(&model_id)?
-        .ok_or_else(|| AppError::new(ErrorCode::ModelFileMissing, Some("unknown model id".into())))?;
+    let model = state.storage.get_model(&model_id)?.ok_or_else(|| {
+        AppError::new(ErrorCode::ModelFileMissing, Some("unknown model id".into()))
+    })?;
 
     // Re-verify the file at start time (it may have moved since registration).
     let model_path = std::path::PathBuf::from(&model.path);
     let info = gguf::inspect(&model_path)?;
 
-    // Stop any running runtime first (concurrency policy, Decision 7).
-    if let Some(rt) = state.runtime.take_runtime() {
-        runtime::stop(rt).await;
-    }
-
-    // The token lets `stop_runtime` abort this load while the model is still
-    // being read, and lets a newer start supersede this one.
-    let token = state.runtime.begin_start();
-
     let settings = config::load();
     let resource_dir = app.path().resource_dir().ok();
+    let override_path = settings.runtime_path_override.clone();
+    let preferred = settings.preferred_runtime_variant;
+    let path = model.path.clone();
+    let started_id = model_id.clone();
+    let trained = info.trained_context_length;
 
-    match runtime::start_cancellable(
-        resource_dir,
-        settings.runtime_path_override.clone(),
-        settings.preferred_runtime_variant,
-        model.path.clone(),
-        model_id.clone(),
-        info.trained_context_length,
-        &token,
-    )
-    .await
-    {
-        Ok(runtime::StartOutcome::Ready(rt)) => {
-            // Record the working variant for next launch.
+    let status = state
+        .runtime
+        .start_serialized(&model_id, move |token| async move {
+            runtime::start_cancellable(
+                resource_dir,
+                override_path,
+                preferred,
+                path,
+                started_id,
+                trained,
+                &token,
+            )
+            .await
+        })
+        .await?;
+
+    if status.state == RuntimeState::Ready {
+        if let Some(variant) = status.variant {
             let mut settings = config::load();
-            if settings.preferred_runtime_variant != Some(rt.variant) {
-                settings.preferred_runtime_variant = Some(rt.variant);
+            if settings.preferred_runtime_variant != Some(variant) {
+                settings.preferred_runtime_variant = Some(variant);
                 let _ = config::save(&settings);
             }
-            let _ = state.storage.touch_model(&model_id);
-            if let Err(stale) = state.runtime.finish_start_ready(&token, rt) {
-                // Cancelled or superseded while the health check was finishing.
-                runtime::stop(stale).await;
-            }
-            Ok(state.runtime.status())
         }
-        Ok(runtime::StartOutcome::Cancelled) => {
-            logging::info("runtime.start_cancelled", "by user");
-            Ok(state.runtime.status())
-        }
-        Err(e) => {
-            if token.is_cancelled() {
-                // The user stopped the engine while this attempt was failing;
-                // the stopped state they asked for wins over a stale error.
-                return Ok(state.runtime.status());
-            }
-            logging::error("runtime.start_failed", &format!("code={:?}", e.code));
-            state.runtime.finish_start_error(&token, e.clone());
-            Err(e)
-        }
+        let _ = state.storage.touch_model(&model_id);
     }
+    Ok(status)
 }
 
 /// Unload the engine: aborts a load that is still in progress and kills a
@@ -329,9 +317,6 @@ pub fn diagnostics_snapshot(state: State<AppState>) -> DiagnosticsSnapshot {
 
 /// Redacted by default; `include_paths = true` is the explicit opt-in.
 #[tauri::command]
-pub fn diagnostics_export(
-    state: State<AppState>,
-    include_paths: bool,
-) -> Result<String, AppError> {
+pub fn diagnostics_export(state: State<AppState>, include_paths: bool) -> Result<String, AppError> {
     diagnostics::export(&state.runtime, include_paths, None)
 }

@@ -22,11 +22,24 @@ SQLite database should not ride along with roaming profile sync.
 
 `data\omnira.db` stores:
 
-- **conversations** -- id, title, created/updated timestamps, model reference.
+- **conversations** -- id, title, created/updated timestamps, model reference
+  (the model registry UUID). That UUID is stable for a given GGUF path:
+  removing a registry entry and later adding the same file reuses the id so
+  existing conversations keep resolving.
 - **messages** -- id, conversation id, role, content, created timestamp,
   status (`complete`, `interrupted`).
 - **models** -- registry entries: id, friendly name, absolute file path, file
   size, GGUF metadata (trained context length), last-used timestamp, status.
+- **model_path_ids** -- internal path→id index used to keep the UUID stable
+  across remove-then-add of the same file. Not a user-visible registry;
+  `UNIQUE(path)` on `models` still means one live registry row per path.
+- **model_id_history** -- tombstones of registry ids used for a path, written
+  on add and on remove. A later add of the same file rewrites conversations
+  still pointing at a previous id for that path.
+- On startup, if exactly one model is registered, conversations whose
+  `model_id` is missing from the registry are rebound to that model. This
+  repairs threads orphaned before path→id tracking existed. With zero or
+  several registered models the Chat "Go to Models" banner remains.
 
 ### Message persistence contract (stream boundaries)
 
@@ -67,7 +80,9 @@ metadata (timings, token counts). Never prompt or response content. See
   missing-file warning (`ModelFileMissing`); chat with that model is blocked
   until resolved.
 - **Removing a model from Omnira removes only the registry entry.** The
-  underlying model file is never deleted by default.
+  underlying model file is never deleted by default. The path→id mapping is
+  retained so adding that same file later reuses the previous registry UUID
+  and existing conversations stay bound to it.
 
 ## 6. Deletion and retention (MVP)
 

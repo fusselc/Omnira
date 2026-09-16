@@ -98,6 +98,8 @@ pub struct RuntimeStatus {
     pub accelerator_label: Option<String>,
     /// Why the CPU fallback engaged, if it did. Diagnostics only.
     pub fallback_reason: Option<String>,
+    /// Registry id of the loaded model when `ready`, or of the model being
+    /// started when `starting`. `None` when stopped / error with nothing pending.
     pub model_id: Option<String>,
     pub port: Option<u16>,
     pub context_size: Option<u64>,
