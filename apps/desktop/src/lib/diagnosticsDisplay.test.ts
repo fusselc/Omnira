@@ -16,6 +16,14 @@ describe("fallbackExplanation", () => {
     expect(explanation.technicalDetail).toBe(reason);
   });
 
+  it("names CUDA when that attempt failed before Vulkan and CPU", () => {
+    const reason = "Cuda unavailable: llama-server exited during startup";
+    const explanation = fallbackExplanation(reason);
+    expect(explanation.body).toContain("CUDA");
+    expect(explanation.body).toContain("Vulkan");
+    expect(explanation.technicalDetail).toBe(reason);
+  });
+
   it("distinguishes a remembered CPU preference from a failed GPU attempt", () => {
     const reason = `${VULKAN_SKIPPED_PREFIX} CPU was recorded as the working runtime on an earlier launch.`;
     const explanation = fallbackExplanation(reason);
@@ -58,19 +66,24 @@ describe("engine display", () => {
 });
 
 describe("variantSelectionOrder", () => {
-  it("uses CUDA → Vulkan → CPU when a CUDA binary is present", () => {
-    expect(variantSelectionOrder(null, true)).toEqual(["cuda", "vulkan", "cpu"]);
-    expect(variantSelectionOrder("vulkan", true)).toEqual(["cuda", "vulkan", "cpu"]);
+  it("uses CUDA → Vulkan → CPU when a CUDA binary is present and NVIDIA is detected", () => {
+    expect(variantSelectionOrder(null, true, true)).toEqual(["cuda", "vulkan", "cpu"]);
+    expect(variantSelectionOrder("vulkan", true, true)).toEqual(["cuda", "vulkan", "cpu"]);
   });
 
   it("keeps Vulkan → CPU when no CUDA binary is present", () => {
-    expect(variantSelectionOrder(null, false)).toEqual(["vulkan", "cpu"]);
-    expect(variantSelectionOrder("cuda", false)).toEqual(["vulkan", "cpu"]);
+    expect(variantSelectionOrder(null, false, true)).toEqual(["vulkan", "cpu"]);
+    expect(variantSelectionOrder("cuda", false, false)).toEqual(["vulkan", "cpu"]);
+  });
+
+  it("skips CUDA when nvidia-smi reports no GPU", () => {
+    expect(variantSelectionOrder(null, true, false)).toEqual(["vulkan", "cpu"]);
+    expect(variantSelectionOrder("cpu", true, false)).toEqual(["cpu", "vulkan"]);
   });
 
   it("starts on CPU when that is preferred, then retries higher-priority GPUs after clear", () => {
-    expect(variantSelectionOrder("cpu", true)).toEqual(["cpu", "cuda", "vulkan"]);
-    expect(variantSelectionOrder("cpu", false)).toEqual(["cpu", "vulkan"]);
-    expect(variantSelectionOrder(null, true)[0]).toBe("cuda");
+    expect(variantSelectionOrder("cpu", true, true)).toEqual(["cpu", "cuda", "vulkan"]);
+    expect(variantSelectionOrder("cpu", false, false)).toEqual(["cpu", "vulkan"]);
+    expect(variantSelectionOrder(null, true, true)[0]).toBe("cuda");
   });
 });

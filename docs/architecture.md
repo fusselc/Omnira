@@ -63,17 +63,19 @@ Module boundaries (in `apps/desktop/src-tauri/src/`):
 ### Managed runtime: llama-server
 
 - Bundled, pinned llama.cpp `llama-server` Windows builds: **Vulkan** (GPU on
-  NVIDIA/AMD/Intel) and **CPU/AVX2** (universal fallback). Vulkan is tried
-  first; on health-check failure the core falls back to CPU and records the
-  working variant in config. Once CPU is recorded, later launches start with
-  CPU and skip Vulkan; `RuntimeStatus.fallback_reason` then says so
-  explicitly (prefix `Vulkan skipped:`) and Advanced Diagnostics offers
-  "Try GPU acceleration again", which clears the recorded preference. A CPU
-  runtime therefore always carries a fallback reason -- the UI never shows CPU
-  as if it were the only option. CUDA is **not shipped**. Phase 6 is the
-  **next approved** addition for the existing ChatProvider only
-  (CUDA -> Vulkan -> CPU on NVIDIA machines); it is not a new provider or
-  screen. See `docs/roadmap.md` and `docs/runtimes-and-routing.md`.
+  NVIDIA/AMD/Intel), **CPU/AVX2** (universal fallback), and **CUDA 12.4** when
+  that binary is present. The core tries CUDA only if `nvidia-smi` reports a
+  GPU; otherwise it tries Vulkan then CPU. On health-check failure it records
+  the working variant in config. Once CPU is recorded, later launches start
+  with CPU and skip the GPU variants; `RuntimeStatus.fallback_reason` then
+  says so explicitly (prefix `Vulkan skipped:`) and Advanced Diagnostics
+  offers "Try GPU acceleration again", which clears the recorded preference.
+  A CPU runtime therefore always carries a fallback reason -- the UI never
+  shows CPU as if it were the only option. The CUDA build and its cudart DLLs
+  are pinned in the fetch script and are not committed. Chat still says
+  "Running locally"; only Advanced Diagnostics names CUDA, Vulkan, or CPU.
+  Phase 6 does not add a new provider or screen. See `docs/roadmap.md` and
+  `docs/runtimes-and-routing.md`.
 - `RuntimeStatus.engine_label` names the engine ("llama.cpp") while a runtime
   is starting or running so the UI can show what is actually executing.
 - Started with `--host 127.0.0.1 --api-key <session-secret> --port <reserved>`.

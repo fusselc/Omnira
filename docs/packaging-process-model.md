@@ -48,22 +48,22 @@ on a Windows machine after building or installing:
 
 ## 2. Bundled runtime
 
-Three llama-server variant slots exist; two are pinned and shipped today:
+Three llama-server variant slots are pinned. Vulkan and CPU are the universal
+pair; CUDA 12.4 is fetched with them unless `-SkipCuda` is passed.
 
-- **Vulkan x64** -- GPU acceleration on NVIDIA, AMD, and Intel GPUs (shipped).
-- **CPU x64 (AVX2)** -- universal fallback (shipped).
-- **CUDA x64** -- Phase 6 slot. Tauri maps `binaries/cuda` -> `runtimes/cuda`.
-  The fetch script does **not** download this variant until an official
-  llama.cpp Windows CUDA artifact name and SHA-256 are pinned (see the TODO
-  in `scripts/packaging/fetch-llama-server.ps1`). Do not invent checksums or
-  commit binaries.
+- **Vulkan x64** -- GPU acceleration on NVIDIA, AMD, and Intel GPUs.
+- **CPU x64 (AVX2)** -- universal fallback.
+- **CUDA 12.4 x64** -- NVIDIA path. Tauri maps `binaries/cuda` -> `runtimes/cuda`.
+  The fetch script pins `llama-b9859-bin-win-cuda-12.4-x64.zip` and merges the
+  matching `cudart-llama-bin-win-cuda-12.4-x64.zip` DLLs into that folder so
+  the variant runs without a separate CUDA Toolkit install. SHA-256 values are
+  the digests published on the ggml-org/llama.cpp `b9859` release.
 
-Selection: try Vulkan first; on health-check failure (missing/old drivers),
-fall back to CPU automatically and record the working variant in config.
-When a CUDA `llama-server.exe` is present on disk, selection is CUDA then
-Vulkan then CPU. NVIDIA device detection is not wired yet — binary presence
-is the only CUDA gate. Clearing a recorded CPU preference ("Try GPU
-acceleration again") retries the higher-priority GPU variants.
+Selection: when the CUDA `llama-server.exe` is present and `nvidia-smi`
+reports a GPU, try CUDA, then Vulkan, then CPU. If either gate fails, try
+Vulkan then CPU. A recorded CPU preference starts on CPU. Clearing it
+(Diagnostics "Try GPU acceleration again") retries the higher-priority GPU
+variants. Do not commit binaries.
 
 Current pin: llama.cpp release tag `b9859`
 (commit `4fc4ec5541b243957ae5099edb67372f8f3b550e`). Artifact names and SHA-256
@@ -95,8 +95,9 @@ Dev mode uses the same script, or a user-supplied runtime path via Settings.
   **MSI is deferred** until after alpha; NSIS is sufficient for early releases.
 - NSIS installs per-machine under `Program Files\Omnira`; runtime/user data
   remains separate under `%LOCALAPPDATA%\Omnira\`.
-- The installer includes: the Omnira executable, both llama-server variants and
-  their DLLs, `THIRD_PARTY_LICENSES`, and LICENSE.
+- The installer includes: the Omnira executable, the fetched llama-server variants and
+  their DLLs (Vulkan, CPU, and CUDA 12.4 plus cudart when the fetch script is
+  run without `-SkipCuda`), `THIRD_PARTY_LICENSES`, and LICENSE.
 - No network access is required at install time or first run. The installer
   uses `webviewInstallMode: skip` and does not download WebView2. **Release
   notes must state that the WebView2 runtime is a prerequisite**; alpha targets

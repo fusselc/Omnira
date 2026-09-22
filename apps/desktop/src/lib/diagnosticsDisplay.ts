@@ -95,10 +95,10 @@ function toneFromAcceleratorLabel(acceleratorLabel: string): VariantBadge["tone"
 export function variantSelectionOrder(
   preferred: RuntimeVariant | null,
   cudaBinaryPresent: boolean,
+  nvidiaGpuPresent: boolean,
 ): RuntimeVariant[] {
-  const gpu: RuntimeVariant[] = cudaBinaryPresent
-    ? ["cuda", "vulkan"]
-    : ["vulkan"];
+  const gpu: RuntimeVariant[] =
+    cudaBinaryPresent && nvidiaGpuPresent ? ["cuda", "vulkan"] : ["vulkan"];
   if (preferred === "cpu") {
     return ["cpu", ...gpu];
   }
@@ -114,6 +114,14 @@ export function fallbackExplanation(fallbackReason: string): FallbackExplanation
       title: "Using CPU mode (remembered from an earlier launch)",
       body:
         "Omnira started on CPU because that is what worked last time; GPU acceleration (Vulkan) was not attempted. Use the button below to try Vulkan on the next model load.",
+      technicalDetail: fallbackReason,
+    };
+  }
+  if (fallbackReason.startsWith("Cuda ")) {
+    return {
+      title: "Using CPU mode",
+      body:
+        "Omnira tried GPU acceleration (CUDA), then Vulkan. It switched to CPU so chat can still run locally on this computer. The engine's startup output is in the detail below.",
       technicalDetail: fallbackReason,
     };
   }

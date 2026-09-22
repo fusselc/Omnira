@@ -1,7 +1,7 @@
 //! Managed llama-server lifecycle (docs/architecture.md sections 2, 4, 5).
 //!
 //! Responsibilities: runtime variant selection (CUDA -> Vulkan -> CPU when a
-//! CUDA binary is present; otherwise Vulkan -> CPU),
+//! CUDA binary is present and nvidia-smi reports a GPU; otherwise Vulkan -> CPU),
 //! loopback port reservation, per-session api-key generation, spawn under the
 //! Job Object, health gating, shutdown, and status snapshots.
 
@@ -31,6 +31,9 @@ const CHARS_PER_TOKEN: u64 = 3;
 const RESPONSE_HEADROOM_FRACTION: u64 = 4; // reserve 1/4
 /// Port-race retry bound (Decision 12).
 const SPAWN_ATTEMPTS: u32 = 3;
+/// Bound for the local nvidia-smi probe. A missing or hung tool must not
+/// stall model start; CUDA is skipped and Vulkan/CPU still run.
+const NVIDIA_SMI_TIMEOUT: Duration = Duration::from_secs(3);
 /// Health polling.
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(120);
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(300);
@@ -731,16 +734,16 @@ pub fn accelerator_label(variant: RuntimeVariant) -> &'static str {
 
 /// Selection order for managed llama-server.
 ///
-/// When a CUDA binary is on disk (`binaries/cuda` / `runtimes/cuda`), try
-/// CUDA then Vulkan then CPU. Otherwise keep today's Vulkan then CPU order.
+/// CUDA is attempted only when both the CUDA `llama-server` binary is on disk
+/// and `nvidia-smi` reports a GPU. Otherwise the order stays Vulkan then CPU.
 /// A recorded CPU preference starts on CPU; clearing it (Diagnostics
 /// "Try GPU acceleration again") retries the higher-priority GPU variants.
-/// NVIDIA device detection is not wired yet — binary presence is the only gate.
 pub fn variant_selection_order(
     preferred: Option<RuntimeVariant>,
     cuda_binary_present: bool,
+    nvidia_gpu_present: bool,
 ) -> Vec<RuntimeVariant> {
-    let mut gpu = if cuda_binary_present {
+    let mut gpu = if cuda_binary_present && nvidia_gpu_present {
         vec![RuntimeVariant::Cuda, RuntimeVariant::Vulkan]
     } else {
         vec![RuntimeVariant::Vulkan]
@@ -759,14 +762,95 @@ pub fn variant_selection_order(
     }
 }
 
+/// True when `nvidia-smi --query-gpu=name` succeeded and named at least one GPU.
+pub fn nvidia_smi_reports_gpu(exit_ok: bool, stdout: &str) -> bool {
+    if !exit_ok {
+        return false;
+    }
+    stdout.lines().any(|line| {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            return false;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        !lower.contains("no devices") && !lower.contains("failed")
+    })
+}
+
+fn nvidia_smi_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(path) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path) {
+            candidates.push(dir.join("nvidia-smi.exe"));
+        }
+    }
+    candidates.push(PathBuf::from(r"C:\Windows\System32\nvidia-smi.exe"));
+    if let Some(program_files) = std::env::var_os("ProgramFiles") {
+        candidates.push(
+            PathBuf::from(program_files)
+                .join("NVIDIA Corporation")
+                .join("NVSMI")
+                .join("nvidia-smi.exe"),
+        );
+    }
+    candidates
+}
+
+/// Local NVIDIA probe. No network. A missing tool, a non-zero exit, or a
+/// timeout skips CUDA; Vulkan and CPU are unchanged.
+async fn nvidia_gpu_present() -> bool {
+    let Some(exe) = nvidia_smi_candidates().into_iter().find(|path| path.is_file()) else {
+        logging::info("runtime.nvidia", "nvidia-smi not found; skipping CUDA");
+        return false;
+    };
+    let mut cmd = Command::new(&exe);
+    cmd.args(["--query-gpu=name", "--format=csv,noheader"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    let child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            logging::info("runtime.nvidia", &format!("nvidia-smi spawn failed: {err}"));
+            return false;
+        }
+    };
+    match tokio::time::timeout(NVIDIA_SMI_TIMEOUT, child.wait_with_output()).await {
+        Ok(Ok(output)) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let present = nvidia_smi_reports_gpu(output.status.success(), &stdout);
+            logging::info(
+                "runtime.nvidia",
+                if present {
+                    "gpu detected"
+                } else {
+                    "no gpu"
+                },
+            );
+            present
+        }
+        Ok(Err(err)) => {
+            logging::info("runtime.nvidia", &format!("nvidia-smi failed: {err}"));
+            false
+        }
+        Err(_) => {
+            logging::info("runtime.nvidia", "nvidia-smi timed out");
+            false
+        }
+    }
+}
+
 pub fn context_chars_budget(ctx_size: u64) -> u64 {
     let usable = ctx_size - ctx_size / RESPONSE_HEADROOM_FRACTION;
     usable * CHARS_PER_TOKEN
 }
 
-/// Start llama-server for the given model: CUDA (if present) then Vulkan,
-/// then CPU (Decision 9 / Phase 6 prep). The working variant and any
-/// CPU-path fallback reason are recorded.
+/// Start llama-server for the given model: CUDA when an NVIDIA GPU is
+/// detected and the CUDA binary is present, then Vulkan, then CPU.
+/// The working variant and any CPU-path fallback reason are recorded.
 pub async fn start(
     resource_dir: Option<PathBuf>,
     override_path: Option<String>,
@@ -809,10 +893,15 @@ pub async fn start_cancellable(
         _ => DEFAULT_CTX_SIZE,
     };
 
-    // Binary presence only — do not treat a Settings override path as CUDA.
+    // Do not treat a Settings override path as a CUDA binary.
     let cuda_binary_present =
         runtime_binary(resource_dir.as_ref(), None, RuntimeVariant::Cuda).is_ok();
-    let order = variant_selection_order(preferred, cuda_binary_present);
+    let nvidia_gpu_present = if cuda_binary_present {
+        nvidia_gpu_present().await
+    } else {
+        false
+    };
+    let order = variant_selection_order(preferred, cuda_binary_present, nvidia_gpu_present);
 
     let mut first_failure: Option<(RuntimeVariant, AppError)> = None;
 
@@ -991,7 +1080,7 @@ mod tests {
     #[test]
     fn variant_selection_order_is_cuda_then_vulkan_then_cpu_when_cuda_binary_exists() {
         assert_eq!(
-            variant_selection_order(None, true),
+            variant_selection_order(None, true, true),
             vec![
                 RuntimeVariant::Cuda,
                 RuntimeVariant::Vulkan,
@@ -999,7 +1088,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            variant_selection_order(Some(RuntimeVariant::Vulkan), true),
+            variant_selection_order(Some(RuntimeVariant::Vulkan), true, true),
             vec![
                 RuntimeVariant::Cuda,
                 RuntimeVariant::Vulkan,
@@ -1007,7 +1096,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            variant_selection_order(Some(RuntimeVariant::Cuda), true),
+            variant_selection_order(Some(RuntimeVariant::Cuda), true, true),
             vec![
                 RuntimeVariant::Cuda,
                 RuntimeVariant::Vulkan,
@@ -1019,23 +1108,50 @@ mod tests {
     #[test]
     fn variant_selection_order_stays_vulkan_then_cpu_without_cuda_binary() {
         assert_eq!(
-            variant_selection_order(None, false),
+            variant_selection_order(None, false, false),
             vec![RuntimeVariant::Vulkan, RuntimeVariant::Cpu]
         );
         assert_eq!(
-            variant_selection_order(Some(RuntimeVariant::Cuda), false),
+            variant_selection_order(Some(RuntimeVariant::Cuda), false, true),
             vec![RuntimeVariant::Vulkan, RuntimeVariant::Cpu]
         );
     }
 
     #[test]
+    fn variant_selection_order_skips_cuda_when_nvidia_smi_reports_no_gpu() {
+        assert_eq!(
+            variant_selection_order(None, true, false),
+            vec![RuntimeVariant::Vulkan, RuntimeVariant::Cpu]
+        );
+        assert_eq!(
+            variant_selection_order(Some(RuntimeVariant::Cpu), true, false),
+            vec![RuntimeVariant::Cpu, RuntimeVariant::Vulkan]
+        );
+    }
+
+    #[test]
+    fn nvidia_smi_output_gates_cuda() {
+        assert!(nvidia_smi_reports_gpu(true, "NVIDIA GeForce RTX 3060\r\n"));
+        assert!(!nvidia_smi_reports_gpu(false, "NVIDIA GeForce RTX 3060\r\n"));
+        assert!(!nvidia_smi_reports_gpu(true, ""));
+        assert!(!nvidia_smi_reports_gpu(
+            true,
+            "No devices were found\r\n"
+        ));
+        assert!(!nvidia_smi_reports_gpu(
+            false,
+            "NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver."
+        ));
+    }
+
+    #[test]
     fn clearing_cpu_preference_retries_higher_priority_gpus() {
         assert_eq!(
-            variant_selection_order(Some(RuntimeVariant::Cpu), false),
+            variant_selection_order(Some(RuntimeVariant::Cpu), false, false),
             vec![RuntimeVariant::Cpu, RuntimeVariant::Vulkan]
         );
         assert_eq!(
-            variant_selection_order(Some(RuntimeVariant::Cpu), true),
+            variant_selection_order(Some(RuntimeVariant::Cpu), true, true),
             vec![
                 RuntimeVariant::Cpu,
                 RuntimeVariant::Cuda,
@@ -1044,11 +1160,11 @@ mod tests {
         );
         // Diagnostics "Try GPU acceleration again" sets preferred to None.
         assert_eq!(
-            variant_selection_order(None, true).first().copied(),
+            variant_selection_order(None, true, true).first().copied(),
             Some(RuntimeVariant::Cuda)
         );
         assert_eq!(
-            variant_selection_order(None, false).first().copied(),
+            variant_selection_order(None, false, true).first().copied(),
             Some(RuntimeVariant::Vulkan)
         );
     }
