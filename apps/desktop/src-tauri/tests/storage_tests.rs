@@ -214,6 +214,70 @@ fn add_model_rewrites_conversations_tombstoned_for_the_same_path() {
 }
 
 #[test]
+fn removing_a_does_not_rebind_its_chat_onto_remaining_model_b() {
+    let (db, dbpath) = temp_db();
+    let path_a = std::env::temp_dir().join(format!("omnira-keep-a-{}.gguf", uuid::Uuid::new_v4()));
+    let path_b = std::env::temp_dir().join(format!("omnira-keep-b-{}.gguf", uuid::Uuid::new_v4()));
+    write_minimal_gguf(&path_a);
+    write_minimal_gguf(&path_b);
+    let model_a = db
+        .add_model("A", &path_a.display().to_string(), 11, Some(4096))
+        .unwrap();
+    let model_b = db
+        .add_model("B", &path_b.display().to_string(), 11, Some(4096))
+        .unwrap();
+    let convo = db
+        .create_conversation("bound to A", Some(&model_a.id))
+        .unwrap();
+
+    db.remove_model(&model_a.id).unwrap();
+    let outcome = db.rebind_orphaned_conversations_if_single_model().unwrap();
+    assert_eq!(outcome.as_ref().map(|o| o.updated), Some(0));
+    let after_restart = db
+        .list_conversations()
+        .unwrap()
+        .into_iter()
+        .find(|c| c.id == convo.id)
+        .unwrap();
+    assert_eq!(after_restart.model_id.as_deref(), Some(model_a.id.as_str()));
+    assert_ne!(after_restart.model_id.as_deref(), Some(model_b.id.as_str()));
+
+    let restored = db
+        .add_model("A", &path_a.display().to_string(), 11, Some(4096))
+        .unwrap();
+    assert_eq!(restored.id, model_a.id);
+    let after_readd = db
+        .list_conversations()
+        .unwrap()
+        .into_iter()
+        .find(|c| c.id == convo.id)
+        .unwrap();
+    assert_eq!(after_readd.model_id.as_deref(), Some(model_a.id.as_str()));
+
+    drop(db);
+    std::fs::remove_file(&dbpath).ok();
+    std::fs::remove_file(&path_a).ok();
+    std::fs::remove_file(&path_b).ok();
+}
+
+#[test]
+fn add_model_treats_equivalent_path_spellings_as_the_same_row() {
+    let (db, dbpath) = temp_db();
+    let real = std::env::temp_dir().join(format!("omnira-slash-{}.gguf", uuid::Uuid::new_v4()));
+    write_minimal_gguf(&real);
+    let backslash = real.display().to_string();
+    let slash = backslash.replace('\\', "/");
+    let first = db.add_model("Slash", &backslash, 11, Some(4096)).unwrap();
+    let again = db.add_model("Slash", &slash, 11, Some(4096)).unwrap();
+    assert_eq!(again.id, first.id);
+    assert_eq!(db.list_models().unwrap().len(), 1);
+
+    drop(db);
+    std::fs::remove_file(&dbpath).ok();
+    std::fs::remove_file(&real).ok();
+}
+
+#[test]
 fn conversation_and_message_flows() {
     let (db, dbpath) = temp_db();
 

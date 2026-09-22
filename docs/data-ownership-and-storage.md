@@ -37,8 +37,10 @@ SQLite database should not ride along with roaming profile sync.
   on add and on remove. A later add of the same file rewrites conversations
   still pointing at a previous id for that path.
 - On startup, if exactly one model is registered, conversations whose
-  `model_id` is missing from the registry are rebound to that model. This
-  repairs threads orphaned before path→id tracking existed. With zero or
+  `model_id` is missing from the registry **and** has no `model_id_history`
+  row are rebound to that model. This repairs threads orphaned before path→id
+  tracking existed. Ids that were removed (history present) are not guessed
+  onto the remaining model; re-adding that file restores them. With zero or
   several registered models the Chat "Go to Models" banner remains.
 
 ### Message persistence contract (stream boundaries)

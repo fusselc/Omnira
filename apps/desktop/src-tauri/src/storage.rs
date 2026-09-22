@@ -191,15 +191,15 @@ impl Storage {
         self.rebind_conversations_for_path(normalized, id)
     }
 
-    fn live_model_id_for_path(&self, path: &str) -> Result<Option<String>, AppError> {
-        self.with(|c| {
-            c.query_row(
-                "SELECT id FROM models WHERE path = ?1",
-                rusqlite::params![path],
-                |r| r.get(0),
-            )
-            .optional()
-        })
+    fn live_model_id_for_normalized(&self, normalized: &str) -> Result<Option<String>, AppError> {
+        let rows: Vec<(String, String)> = self.with(|c| {
+            let mut stmt = c.prepare("SELECT id, path FROM models")?;
+            let mapped = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            mapped.collect()
+        })?;
+        Ok(rows.into_iter().find_map(|(id, path)| {
+            (normalize_model_path(&path) == normalized).then_some(id)
+        }))
     }
 
     fn stable_id_for_path(&self, normalized: &str) -> Result<String, AppError> {
@@ -243,7 +243,7 @@ impl Storage {
         trained_context_length: Option<u64>,
     ) -> Result<ModelEntry, AppError> {
         let normalized = normalize_model_path(path);
-        if let Some(existing_id) = self.live_model_id_for_path(path)? {
+        if let Some(existing_id) = self.live_model_id_for_normalized(&normalized)? {
             self.with(|c| {
                 c.execute(
                     "UPDATE models SET name = ?1, path = ?2, file_size_bytes = ?3, trained_context_length = ?4
@@ -354,8 +354,10 @@ impl Storage {
     }
 
     /// When exactly one model is registered, rebind conversations whose
-    /// `model_id` is missing from the registry to that model. No-op if there
-    /// are zero or several models. Safe to run on every startup.
+    /// `model_id` is missing from the registry **and** has no
+    /// `model_id_history` row. Ids with history belong to a known path and
+    /// are left alone so a later re-add of that path can restore them.
+    /// No-op if there are zero or several models. Safe to run on every startup.
     pub fn rebind_orphaned_conversations_if_single_model(
         &self,
     ) -> Result<Option<OrphanRebind>, AppError> {
@@ -376,7 +378,8 @@ impl Storage {
             let n = c.execute(
                 "UPDATE conversations SET model_id = ?1, updated_at = ?2
                  WHERE model_id IS NOT NULL
-                   AND model_id NOT IN (SELECT id FROM models)",
+                   AND model_id NOT IN (SELECT id FROM models)
+                   AND model_id NOT IN (SELECT id FROM model_id_history)",
                 rusqlite::params![target_model_id, ts],
             )?;
             Ok(n as u64)
