@@ -146,6 +146,11 @@ and must not be silently added to the current ChatProvider. See
   decision** (off by default; permission model before ship)
 - Cloud providers, accounts, sync, or telemetry as product defaults --
   **Requires explicit product decision** (not planned as default behavior)
+- Chat runtime `--ctx-size` is hardcoded to 8192 and only clamped *down* to a
+  model's trained length when that is smaller. Models trained above 8192
+  (for example 131072) are silently truncated. Follow-up: a Settings-exposed
+  context size, capped by the model's trained length -- do not change the
+  runtime default until that lands.
 
 Model display-name renaming (H3) shipped in the Models screen (registry name
 only; GGUF path unchanged).

@@ -5,6 +5,7 @@
 //! loopback port reservation, per-session api-key generation, spawn under the
 //! Job Object, health gating, shutdown, and status snapshots.
 
+use std::future::Future;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -57,7 +58,8 @@ const VK_LOADER_LAYERS_DISABLE_VALUE: &str = "~implicit~";
 const VK_LOADER_LAYERS_ENABLE_VALUE: &str = "*optimus*";
 
 pub struct ManagedRuntime {
-    child: Child,
+    /// `None` only in unit tests that inject an inert handle (no OS child).
+    child: Option<Child>,
     pub variant: RuntimeVariant,
     pub port: u16,
     pub api_key: String,
@@ -108,6 +110,10 @@ impl From<AppError> for StartFailure {
 #[derive(Default)]
 pub struct RuntimeManager {
     inner: Mutex<Inner>,
+    /// Serializes start attempts so overlapping IPC calls cannot spawn two
+    /// llama-server children. The second caller waits, then either joins a
+    /// ready runtime for the same model or starts after the previous attempt.
+    start_gate: tokio::sync::Mutex<()>,
 }
 
 #[derive(Default)]
@@ -117,6 +123,15 @@ struct Inner {
     last_error: Option<AppError>,
     /// Cancellation handle for the start currently in flight, if any.
     pending_start: Option<StartCancel>,
+    /// Model being started; surfaced on `RuntimeStatus.model_id` while
+    /// `state == Starting` so the UI does not treat the load as idle.
+    pending_model_id: Option<String>,
+    /// Bumped whenever a start is cancelled (`take_runtime`). Callers queued
+    /// on `start_gate` snapshot this and abort if it moved while they waited.
+    start_epoch: u64,
+    /// Failure from the attempt a waiter was queued behind, so that waiter
+    /// returns the same error instead of spawning again.
+    shared_start_failure: Option<(String, AppError)>,
 }
 
 impl Default for RuntimeState {
@@ -410,7 +425,7 @@ async fn spawn_variant(
                 stderr.stop_capturing();
                 logging::info("runtime.ready", &format!("variant={variant:?} port={port}"));
                 return Ok(ManagedRuntime {
-                    child,
+                    child: Some(child),
                     variant,
                     port,
                     api_key,
@@ -463,7 +478,10 @@ impl RuntimeManager {
             Self::mark_unavailable(inner, "runtime handle missing while ready".into());
             return;
         }
-        let waited = inner.runtime.as_mut().map(|rt| rt.child.try_wait());
+        let waited = inner.runtime.as_mut().map(|rt| match rt.child.as_mut() {
+            Some(child) => child.try_wait(),
+            None => Ok(None),
+        });
         let detail = match waited {
             Some(Ok(None)) => return,
             Some(Ok(Some(status))) => format!("llama-server exited: {status}"),
@@ -491,7 +509,9 @@ impl RuntimeManager {
             variant: rt.map(|r| r.variant),
             accelerator_label: rt.map(|r| accelerator_label(r.variant).to_string()),
             fallback_reason: rt.and_then(|r| r.fallback_reason.clone()),
-            model_id: rt.map(|r| r.model_id.clone()),
+            model_id: rt
+                .map(|r| r.model_id.clone())
+                .or_else(|| inner.pending_model_id.clone()),
             port: rt.map(|r| r.port),
             context_size: rt.map(|r| r.context_size),
             last_error: inner.last_error.clone(),
@@ -518,13 +538,14 @@ impl RuntimeManager {
 
     /// Enter `starting` and hand back the cancellation token for this attempt.
     /// Any older in-flight start is cancelled so only the newest one can win.
-    pub fn begin_start(&self) -> StartCancel {
+    pub fn begin_start(&self, model_id: impl Into<String>) -> StartCancel {
         let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(previous) = inner.pending_start.take() {
             previous.cancel();
         }
         let token = StartCancel::default();
         inner.pending_start = Some(token.clone());
+        inner.pending_model_id = Some(model_id.into());
         inner.state = RuntimeState::Starting;
         inner.last_error = None;
         token
@@ -537,6 +558,7 @@ impl RuntimeManager {
             return;
         }
         inner.pending_start = None;
+        inner.pending_model_id = None;
         inner.state = RuntimeState::Error;
         inner.last_error = Some(err);
         inner.runtime = None;
@@ -554,6 +576,7 @@ impl RuntimeManager {
             return Err(runtime);
         }
         inner.pending_start = None;
+        inner.pending_model_id = None;
         inner.state = RuntimeState::Ready;
         inner.last_error = None;
         inner.runtime = Some(runtime);
@@ -571,12 +594,122 @@ impl RuntimeManager {
     /// running runtime (if any) for the caller to kill. State becomes `stopped`.
     pub fn take_runtime(&self) -> Option<ManagedRuntime> {
         let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
-        if let Some(pending) = inner.pending_start.take() {
+        let cancelled_inflight = if let Some(pending) = inner.pending_start.take() {
             pending.cancel();
+            true
+        } else {
+            false
+        };
+        if cancelled_inflight {
+            inner.start_epoch = inner.start_epoch.wrapping_add(1);
         }
+        inner.pending_model_id = None;
         inner.state = RuntimeState::Stopped;
         inner.last_error = None;
         inner.runtime.take()
+    }
+
+    fn start_epoch(&self) -> u64 {
+        self.inner.lock().unwrap_or_else(|p| p.into_inner()).start_epoch
+    }
+
+    fn shared_failure_for(&self, model_id: &str) -> Option<AppError> {
+        let inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        inner
+            .shared_start_failure
+            .as_ref()
+            .filter(|(id, _)| id == model_id)
+            .map(|(_, err)| err.clone())
+    }
+
+    fn set_shared_failure(&self, model_id: &str, err: AppError) {
+        let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        inner.shared_start_failure = Some((model_id.to_string(), err));
+    }
+
+    fn clear_shared_failure(&self) {
+        let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        inner.shared_start_failure = None;
+    }
+
+    fn is_ready_for(&self, model_id: &str) -> bool {
+        let status = self.status();
+        status.state == RuntimeState::Ready && status.model_id.as_deref() == Some(model_id)
+    }
+
+    /// Start a runtime, or join an in-flight/already-ready one for `model_id`.
+    ///
+    /// Overlapping callers share a single-flight gate: only one spawn runs at
+    /// a time. A second call for the same model that is already ready or whose
+    /// start is in flight does not stop the current child or spawn another.
+    pub async fn start_serialized<F, Fut>(
+        &self,
+        model_id: &str,
+        spawn: F,
+    ) -> Result<RuntimeStatus, AppError>
+    where
+        F: FnOnce(StartCancel) -> Fut,
+        Fut: Future<Output = Result<StartOutcome, AppError>>,
+    {
+        if self.is_ready_for(model_id) {
+            logging::info("runtime.start_reuse", "already ready");
+            return Ok(self.status());
+        }
+
+        let epoch = self.start_epoch();
+        let mut waited = false;
+        let _gate = match self.start_gate.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                waited = true;
+                self.start_gate.lock().await
+            }
+        };
+
+        if waited && self.start_epoch() != epoch {
+            logging::info("runtime.start_skipped", "cancelled while queued");
+            return Ok(self.status());
+        }
+        if waited {
+            if let Some(err) = self.shared_failure_for(model_id) {
+                logging::info("runtime.start_joined_failure", "sharing in-flight failure");
+                return Err(err);
+            }
+        }
+
+        if self.is_ready_for(model_id) {
+            logging::info("runtime.start_reuse", "already ready after wait");
+            return Ok(self.status());
+        }
+
+        self.clear_shared_failure();
+
+        if let Some(rt) = self.take_runtime() {
+            stop(rt).await;
+        }
+
+        let token = self.begin_start(model_id.to_string());
+        match spawn(token.clone()).await {
+            Ok(StartOutcome::Ready(rt)) => {
+                if let Err(stale) = self.finish_start_ready(&token, rt) {
+                    stop(stale).await;
+                }
+                Ok(self.status())
+            }
+            Ok(StartOutcome::Cancelled) => {
+                logging::info("runtime.start_cancelled", "by user");
+                Ok(self.status())
+            }
+            Err(e) => {
+                if token.is_cancelled() {
+                    return Ok(self.status());
+                }
+                logging::error("runtime.start_failed", &format!("code={:?}", e.code));
+                self.finish_start_error(&token, e.clone());
+                self.set_shared_failure(model_id, e.clone());
+                Err(e)
+            }
+        }
     }
 }
 
@@ -743,12 +876,15 @@ fn fallback_reason(
 /// Stop a managed runtime gracefully-ish: kill the child and reap it.
 pub async fn stop(mut rt: ManagedRuntime) {
     logging::info("runtime.stop", &format!("port={}", rt.port));
-    kill_and_reap(&mut rt.child).await;
+    if let Some(ref mut child) = rt.child {
+        kill_and_reap(child).await;
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn cuda_variant_serializes_as_snake_case() {
@@ -927,23 +1063,34 @@ mod tests {
     #[test]
     fn take_runtime_cancels_pending_start() {
         let manager = RuntimeManager::default();
-        let token = manager.begin_start();
+        let token = manager.begin_start("pending-model");
         assert_eq!(manager.status().state, RuntimeState::Starting);
         assert_eq!(manager.status().engine_label.as_deref(), Some(ENGINE_LABEL));
+        assert_eq!(manager.status().model_id.as_deref(), Some("pending-model"));
 
         assert!(manager.take_runtime().is_none());
         assert!(token.is_cancelled());
         let status = manager.status();
         assert_eq!(status.state, RuntimeState::Stopped);
         assert!(status.engine_label.is_none());
+        assert!(status.model_id.is_none());
         assert!(status.last_error.is_none());
+    }
+
+    #[test]
+    fn starting_status_includes_pending_model_id() {
+        let manager = RuntimeManager::default();
+        let _token = manager.begin_start("model-a");
+        let status = manager.status();
+        assert_eq!(status.state, RuntimeState::Starting);
+        assert_eq!(status.model_id.as_deref(), Some("model-a"));
     }
 
     #[test]
     fn newer_start_supersedes_older_one() {
         let manager = RuntimeManager::default();
-        let first = manager.begin_start();
-        let second = manager.begin_start();
+        let first = manager.begin_start("model-a");
+        let second = manager.begin_start("model-b");
         assert!(first.is_cancelled());
         assert!(!second.is_cancelled());
 
@@ -956,5 +1103,204 @@ mod tests {
             AppError::new(ErrorCode::RuntimeFailedToStart, None),
         );
         assert_eq!(manager.status().state, RuntimeState::Error);
+    }
+
+    impl ManagedRuntime {
+        fn inert(model_id: &str) -> Self {
+            use std::sync::atomic::{AtomicU16, Ordering as AtomicOrdering};
+            static NEXT_PORT: AtomicU16 = AtomicU16::new(40_000);
+            Self {
+                child: None,
+                variant: RuntimeVariant::Cpu,
+                port: NEXT_PORT.fetch_add(1, AtomicOrdering::SeqCst),
+                api_key: "test-key".into(),
+                model_id: model_id.to_string(),
+                context_size: 8192,
+                fallback_reason: None,
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn concurrent_starts_for_same_model_spawn_one_child() {
+        use std::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
+        let manager = Arc::new(RuntimeManager::default());
+        let spawns = Arc::new(AtomicU32::new(0));
+
+        let launch = |manager: Arc<RuntimeManager>, spawns: Arc<AtomicU32>| {
+            tokio::spawn(async move {
+                manager
+                    .start_serialized("model-a", |_token| {
+                        let spawns = spawns.clone();
+                        async move {
+                            spawns.fetch_add(1, AtomicOrdering::SeqCst);
+                            tokio::time::sleep(Duration::from_millis(80)).await;
+                            Ok(StartOutcome::Ready(ManagedRuntime::inert("model-a")))
+                        }
+                    })
+                    .await
+            })
+        };
+
+        let first = launch(manager.clone(), spawns.clone());
+        let second = launch(manager.clone(), spawns.clone());
+        let first_status = first.await.unwrap().unwrap();
+        let second_status = second.await.unwrap().unwrap();
+
+        assert_eq!(spawns.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(first_status.state, RuntimeState::Ready);
+        assert_eq!(second_status.state, RuntimeState::Ready);
+        assert_eq!(manager.status().model_id.as_deref(), Some("model-a"));
+        assert_eq!(manager.status().state, RuntimeState::Ready);
+    }
+
+    #[tokio::test]
+    async fn start_when_already_ready_for_same_model_is_noop() {
+        use std::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
+        let manager = RuntimeManager::default();
+        let spawns = Arc::new(AtomicU32::new(0));
+
+        let spawn_once = |spawns: Arc<AtomicU32>| {
+            move |_token: StartCancel| {
+                let spawns = spawns.clone();
+                async move {
+                    spawns.fetch_add(1, AtomicOrdering::SeqCst);
+                    Ok(StartOutcome::Ready(ManagedRuntime::inert("model-a")))
+                }
+            }
+        };
+
+        manager
+            .start_serialized("model-a", spawn_once(spawns.clone()))
+            .await
+            .unwrap();
+        let port_after_first = manager.status().port;
+        manager
+            .start_serialized("model-a", spawn_once(spawns.clone()))
+            .await
+            .unwrap();
+
+        assert_eq!(spawns.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(manager.status().port, port_after_first);
+        assert_eq!(manager.status().state, RuntimeState::Ready);
+        assert_eq!(manager.status().model_id.as_deref(), Some("model-a"));
+    }
+
+    #[tokio::test]
+    async fn queued_start_behind_a_cancelled_one_does_not_spawn() {
+        use std::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
+        let manager = Arc::new(RuntimeManager::default());
+        let spawns = Arc::new(AtomicU32::new(0));
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+
+        let first_manager = manager.clone();
+        let first_spawns = spawns.clone();
+        let first_entered = entered.clone();
+        let first_release = release.clone();
+        let entered_wait = entered.notified();
+        let first = tokio::spawn(async move {
+            first_manager
+                .start_serialized("model-a", |token| {
+                    let spawns = first_spawns.clone();
+                    let entered = first_entered.clone();
+                    let release = first_release.clone();
+                    async move {
+                        spawns.fetch_add(1, AtomicOrdering::SeqCst);
+                        entered.notify_waiters();
+                        release.notified().await;
+                        if token.is_cancelled() {
+                            Ok(StartOutcome::Cancelled)
+                        } else {
+                            Ok(StartOutcome::Ready(ManagedRuntime::inert("model-a")))
+                        }
+                    }
+                })
+                .await
+        });
+
+        entered_wait.await;
+        let second_manager = manager.clone();
+        let second_spawns = spawns.clone();
+        let second = tokio::spawn(async move {
+            second_manager
+                .start_serialized("model-a", |_token| {
+                    let spawns = second_spawns.clone();
+                    async move {
+                        spawns.fetch_add(1, AtomicOrdering::SeqCst);
+                        Ok(StartOutcome::Ready(ManagedRuntime::inert("model-a")))
+                    }
+                })
+                .await
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(manager.take_runtime().is_none());
+        release.notify_waiters();
+
+        let first_status = first.await.unwrap().unwrap();
+        let second_status = second.await.unwrap().unwrap();
+        assert_eq!(spawns.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(first_status.state, RuntimeState::Stopped);
+        assert_eq!(second_status.state, RuntimeState::Stopped);
+    }
+
+    #[tokio::test]
+    async fn queued_start_shares_the_inflight_failure() {
+        use std::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
+        let manager = Arc::new(RuntimeManager::default());
+        let spawns = Arc::new(AtomicU32::new(0));
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+
+        let first_manager = manager.clone();
+        let first_spawns = spawns.clone();
+        let first_entered = entered.clone();
+        let first_release = release.clone();
+        let entered_wait = entered.notified();
+        let first = tokio::spawn(async move {
+            first_manager
+                .start_serialized("model-a", |_token| {
+                    let spawns = first_spawns.clone();
+                    let entered = first_entered.clone();
+                    let release = first_release.clone();
+                    async move {
+                        spawns.fetch_add(1, AtomicOrdering::SeqCst);
+                        entered.notify_waiters();
+                        release.notified().await;
+                        Err(AppError::new(
+                            ErrorCode::RuntimeFailedToStart,
+                            Some("first attempt failed".into()),
+                        ))
+                    }
+                })
+                .await
+        });
+
+        entered_wait.await;
+        let second_manager = manager.clone();
+        let second_spawns = spawns.clone();
+        let second = tokio::spawn(async move {
+            second_manager
+                .start_serialized("model-a", |_token| {
+                    let spawns = second_spawns.clone();
+                    async move {
+                        spawns.fetch_add(1, AtomicOrdering::SeqCst);
+                        Ok(StartOutcome::Ready(ManagedRuntime::inert("model-a")))
+                    }
+                })
+                .await
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        release.notify_waiters();
+
+        let first_err = first.await.unwrap().unwrap_err();
+        let second_err = second.await.unwrap().unwrap_err();
+        assert_eq!(spawns.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(first_err.code, ErrorCode::RuntimeFailedToStart);
+        assert_eq!(second_err.code, ErrorCode::RuntimeFailedToStart);
+        assert_eq!(
+            second_err.detail.as_deref(),
+            Some("first attempt failed")
+        );
     }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FilePlus, Play, Trash2, AlertTriangle, Pencil } from "lucide-react";
 import { pickGgufFile } from "../lib/dialog";
 import {
@@ -8,6 +8,7 @@ import {
   type ModelEntry,
   type RuntimeStatus,
 } from "../lib/ipc";
+import { acquire, release } from "../lib/singleFlight";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { UnloadRuntimeButton } from "../components/UnloadRuntimeButton";
 import { formatBytes, formatWhen } from "../lib/format";
@@ -23,6 +24,7 @@ export function Models({
   const [error, setError] = useState<AppError | null>(null);
   const [busy, setBusy] = useState(false);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const startLockRef = useRef(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
@@ -47,6 +49,7 @@ export function Models({
   };
 
   const useModel = async (id: string) => {
+    if (!acquire(startLockRef)) return;
     setError(null);
     setBusy(true);
     setLoadingId(id);
@@ -56,6 +59,7 @@ export function Models({
     } catch (e) {
       setError(toAppError(e));
     } finally {
+      release(startLockRef);
       setBusy(false);
       setLoadingId(null);
       await refreshRuntime();
@@ -147,7 +151,9 @@ export function Models({
         <ul className="flex flex-col gap-3">
           {models.map((m) => {
             const active = runtime.model_id === m.id && runtime.state === "ready";
-            const starting = loadingId === m.id && runtime.state === "starting";
+            const starting =
+              loadingId === m.id ||
+              (runtime.state === "starting" && runtime.model_id === m.id);
             return (
               <li
                 key={m.id}
@@ -237,7 +243,7 @@ export function Models({
                   )}
                   <button
                     onClick={() => void useModel(m.id)}
-                    disabled={m.status !== "ok" || busy || runtime.state === "starting"}
+                    disabled={m.status !== "ok" || busy || starting || runtime.state === "starting"}
                     className="flex items-center gap-1.5 rounded-lg border border-brand-border px-3 py-1.5 text-xs hover:bg-brand-hover disabled:opacity-40"
                   >
                     <Play size={13} />

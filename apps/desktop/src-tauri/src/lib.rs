@@ -19,6 +19,28 @@ pub fn run() {
     logging::info("app.start", env!("CARGO_PKG_VERSION"));
 
     let storage = storage::Storage::open().expect("failed to open local database");
+    match storage.rebind_orphaned_conversations_if_single_model() {
+        Ok(Some(outcome)) if outcome.updated > 0 => {
+            logging::info(
+                "conversation.rebind",
+                &format!(
+                    "orphaned_count={} target_model_id={}",
+                    outcome.updated, outcome.target_model_id
+                ),
+            );
+        }
+        Ok(_) => {}
+        Err(e) => {
+            logging::error(
+                "conversation.rebind",
+                &format!(
+                    "code={:?} detail={}",
+                    e.code,
+                    e.detail.as_deref().unwrap_or("")
+                ),
+            );
+        }
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

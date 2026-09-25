@@ -156,7 +156,9 @@ port from log output.
 ## 6. Concurrency and context
 
 - **One loaded model, one active generation at a time.** Selecting a different
-  model stops and restarts `llama-server`. Conversation history persists in
+  model stops and restarts `llama-server`. Starting a model that is already
+  ready is a no-op; overlapping start requests are serialized so two clicks
+  cannot spawn two children. Conversation history persists in
   SQLite independently; only a live generation is interrupted. Sending while
   generating is disabled in the UI and rejected at the API.
 - **Context overflow:** oldest-first truncation. The Rust core knows the runtime

@@ -3,17 +3,23 @@
 
 use std::sync::Mutex;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use crate::errors::{AppError, ErrorCode};
 use crate::gguf;
 use crate::paths;
-use crate::types::{
-    Conversation, Message, MessageRole, MessageStatus, ModelEntry, ModelStatus,
-};
+use crate::types::{Conversation, Message, MessageRole, MessageStatus, ModelEntry, ModelStatus};
 
 pub struct Storage {
     conn: Mutex<Connection>,
+}
+
+/// Result of the conservative single-model orphan repair. `None` from
+/// `rebind_orphaned_conversations_if_single_model` means zero or several
+/// registry models, so nothing was changed.
+pub struct OrphanRebind {
+    pub updated: u64,
+    pub target_model_id: String,
 }
 
 const SCHEMA: &str = "
@@ -46,6 +52,18 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation
     ON messages(conversation_id, created_at);
+
+CREATE TABLE IF NOT EXISTS model_path_ids (
+    normalized_path TEXT PRIMARY KEY,
+    id TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS model_id_history (
+    id TEXT PRIMARY KEY,
+    normalized_path TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_model_id_history_path
+    ON model_id_history(normalized_path);
 ";
 
 fn now() -> String {
@@ -67,6 +85,20 @@ fn model_status(path: &str) -> ModelStatus {
     }
 }
 
+/// Comparison key so the same GGUF file keeps one registry UUID across
+/// Remove then Add, even when separators or drive-letter case differ.
+fn normalize_model_path(path: &str) -> String {
+    let mut normalized = path.trim().replace('/', "\\");
+    while normalized.contains("\\\\") {
+        normalized = normalized.replace("\\\\", "\\");
+    }
+    #[cfg(windows)]
+    {
+        normalized.make_ascii_lowercase();
+    }
+    normalized
+}
+
 impl Storage {
     pub fn open() -> Result<Self, AppError> {
         Self::open_at(&paths::db_path())
@@ -76,9 +108,12 @@ impl Storage {
         let conn = Connection::open(path)?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
         conn.execute_batch(SCHEMA)?;
-        Ok(Self {
+        let storage = Self {
             conn: Mutex::new(conn),
-        })
+        };
+        storage.backfill_model_path_ids()?;
+        storage.backfill_model_id_history()?;
+        Ok(storage)
     }
 
     fn with<T>(
@@ -87,6 +122,115 @@ impl Storage {
     ) -> Result<T, AppError> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         Ok(f(&conn)?)
+    }
+
+    fn backfill_model_path_ids(&self) -> Result<(), AppError> {
+        self.with(|c| {
+            let rows: Vec<(String, String)> = {
+                let mut stmt = c.prepare("SELECT id, path FROM models")?;
+                let mapped = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+                mapped.collect::<Result<_, _>>()?
+            };
+            for (id, path) in rows {
+                let normalized = normalize_model_path(&path);
+                c.execute(
+                    "INSERT OR IGNORE INTO model_path_ids (normalized_path, id) VALUES (?1, ?2)",
+                    rusqlite::params![normalized, id],
+                )?;
+                c.execute(
+                    "INSERT OR IGNORE INTO model_id_history (id, normalized_path) VALUES (?1, ?2)",
+                    rusqlite::params![id, normalized],
+                )?;
+            }
+            Ok(())
+        })
+    }
+
+    fn backfill_model_id_history(&self) -> Result<(), AppError> {
+        self.with(|c| {
+            c.execute_batch(
+                "INSERT OR IGNORE INTO model_id_history (id, normalized_path)
+                 SELECT id, normalized_path FROM model_path_ids",
+            )?;
+            Ok(())
+        })
+    }
+
+    fn record_id_history(&self, normalized: &str, id: &str) -> Result<(), AppError> {
+        self.with(|c| {
+            c.execute(
+                "INSERT OR IGNORE INTO model_id_history (id, normalized_path) VALUES (?1, ?2)",
+                rusqlite::params![id, normalized],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn rebind_conversations_for_path(
+        &self,
+        normalized: &str,
+        new_id: &str,
+    ) -> Result<(), AppError> {
+        let ts = now();
+        self.with(|c| {
+            c.execute(
+                "UPDATE conversations SET model_id = ?1, updated_at = ?2
+                 WHERE model_id IN (
+                    SELECT id FROM model_id_history WHERE normalized_path = ?3
+                 )
+                 AND model_id != ?1",
+                rusqlite::params![new_id, ts, normalized],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn remember_model_identity(&self, normalized: &str, id: &str) -> Result<(), AppError> {
+        self.remember_path_id(normalized, id)?;
+        self.record_id_history(normalized, id)?;
+        self.rebind_conversations_for_path(normalized, id)
+    }
+
+    fn live_model_id_for_normalized(&self, normalized: &str) -> Result<Option<String>, AppError> {
+        let rows: Vec<(String, String)> = self.with(|c| {
+            let mut stmt = c.prepare("SELECT id, path FROM models")?;
+            let mapped = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            mapped.collect()
+        })?;
+        Ok(rows.into_iter().find_map(|(id, path)| {
+            (normalize_model_path(&path) == normalized).then_some(id)
+        }))
+    }
+
+    fn stable_id_for_path(&self, normalized: &str) -> Result<String, AppError> {
+        self.with(|c| {
+            let existing: Option<String> = c
+                .query_row(
+                    "SELECT id FROM model_path_ids WHERE normalized_path = ?1",
+                    rusqlite::params![normalized],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if let Some(id) = existing {
+                return Ok(id);
+            }
+            let id = new_id();
+            c.execute(
+                "INSERT INTO model_path_ids (normalized_path, id) VALUES (?1, ?2)",
+                rusqlite::params![normalized, id],
+            )?;
+            Ok(id)
+        })
+    }
+
+    fn remember_path_id(&self, normalized: &str, id: &str) -> Result<(), AppError> {
+        self.with(|c| {
+            c.execute(
+                "INSERT OR REPLACE INTO model_path_ids (normalized_path, id) VALUES (?1, ?2)",
+                rusqlite::params![normalized, id],
+            )?;
+            Ok(())
+        })
     }
 
     // -- Models --------------------------------------------------------------
@@ -98,7 +242,29 @@ impl Storage {
         file_size_bytes: u64,
         trained_context_length: Option<u64>,
     ) -> Result<ModelEntry, AppError> {
-        let id = new_id();
+        let normalized = normalize_model_path(path);
+        if let Some(existing_id) = self.live_model_id_for_normalized(&normalized)? {
+            self.with(|c| {
+                c.execute(
+                    "UPDATE models SET name = ?1, path = ?2, file_size_bytes = ?3, trained_context_length = ?4
+                     WHERE id = ?5",
+                    rusqlite::params![
+                        name,
+                        path,
+                        file_size_bytes,
+                        trained_context_length,
+                        existing_id
+                    ],
+                )?;
+                Ok(())
+            })?;
+            self.remember_model_identity(&normalized, &existing_id)?;
+            return self
+                .get_model(&existing_id)?
+                .ok_or_else(|| AppError::from(rusqlite::Error::QueryReturnedNoRows));
+        }
+
+        let id = self.stable_id_for_path(&normalized)?;
         let added_at = now();
         self.with(|c| {
             c.execute(
@@ -112,12 +278,16 @@ impl Storage {
             )?;
             Ok(())
         })?;
-        // Fetch by path so the ON CONFLICT update path returns the existing row.
-        let models = self.list_models()?;
-        models
-            .into_iter()
-            .find(|m| m.path == path)
-            .ok_or_else(|| AppError::from(rusqlite::Error::QueryReturnedNoRows))
+        let entry = match self.get_model(&id)? {
+            Some(model) => model,
+            None => self
+                .list_models()?
+                .into_iter()
+                .find(|m| m.path == path)
+                .ok_or_else(|| AppError::from(rusqlite::Error::QueryReturnedNoRows))?,
+        };
+        self.remember_model_identity(&normalized, &entry.id)?;
+        Ok(entry)
     }
 
     pub fn list_models(&self) -> Result<Vec<ModelEntry>, AppError> {
@@ -160,11 +330,64 @@ impl Storage {
     }
 
     /// Removes only the registry entry. Never touches the model file.
+    /// The path→id mapping is kept so a later add of the same file reuses
+    /// this id and existing conversations stay bound. The removed id is
+    /// tombstoned in `model_id_history` so a later add for that path can
+    /// rewrite conversations still pointing at it.
     pub fn remove_model(&self, id: &str) -> Result<(), AppError> {
+        let path: Option<String> = self.with(|c| {
+            c.query_row(
+                "SELECT path FROM models WHERE id = ?1",
+                rusqlite::params![id],
+                |r| r.get(0),
+            )
+            .optional()
+        })?;
         self.with(|c| {
             c.execute("DELETE FROM models WHERE id = ?1", rusqlite::params![id])?;
             Ok(())
-        })
+        })?;
+        if let Some(path) = path {
+            self.record_id_history(&normalize_model_path(&path), id)?;
+        }
+        Ok(())
+    }
+
+    /// When exactly one model is registered, rebind conversations whose
+    /// `model_id` is missing from the registry **and** has no
+    /// `model_id_history` row. Ids with history belong to a known path and
+    /// are left alone so a later re-add of that path can restore them.
+    /// No-op if there are zero or several models. Safe to run on every startup.
+    pub fn rebind_orphaned_conversations_if_single_model(
+        &self,
+    ) -> Result<Option<OrphanRebind>, AppError> {
+        let ids: Vec<String> = self.with(|c| {
+            let mut stmt = c.prepare("SELECT id FROM models")?;
+            let rows = stmt.query_map([], |r| r.get(0))?;
+            rows.collect()
+        })?;
+        let mut ids = ids.into_iter();
+        let Some(target_model_id) = ids.next() else {
+            return Ok(None);
+        };
+        if ids.next().is_some() {
+            return Ok(None);
+        }
+        let ts = now();
+        let updated = self.with(|c| {
+            let n = c.execute(
+                "UPDATE conversations SET model_id = ?1, updated_at = ?2
+                 WHERE model_id IS NOT NULL
+                   AND model_id NOT IN (SELECT id FROM models)
+                   AND model_id NOT IN (SELECT id FROM model_id_history)",
+                rusqlite::params![target_model_id, ts],
+            )?;
+            Ok(n as u64)
+        })?;
+        Ok(Some(OrphanRebind {
+            updated,
+            target_model_id,
+        }))
     }
 
     /// Renames the registry display name only. Never renames or moves the file.
@@ -259,7 +482,10 @@ impl Storage {
 
     pub fn delete_conversation(&self, id: &str) -> Result<(), AppError> {
         self.with(|c| {
-            c.execute("DELETE FROM conversations WHERE id = ?1", rusqlite::params![id])?;
+            c.execute(
+                "DELETE FROM conversations WHERE id = ?1",
+                rusqlite::params![id],
+            )?;
             Ok(())
         })
     }
@@ -305,7 +531,14 @@ impl Storage {
             c.execute(
                 "INSERT INTO messages (id, conversation_id, role, content, status, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                rusqlite::params![msg.id, msg.conversation_id, role_s, msg.content, status_s, msg.created_at],
+                rusqlite::params![
+                    msg.id,
+                    msg.conversation_id,
+                    role_s,
+                    msg.content,
+                    status_s,
+                    msg.created_at
+                ],
             )?;
             c.execute(
                 "UPDATE conversations SET updated_at = ?1 WHERE id = ?2",

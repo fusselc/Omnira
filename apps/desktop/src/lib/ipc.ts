@@ -105,6 +105,7 @@ export interface RuntimeStatus {
   variant: RuntimeVariant | null;
   accelerator_label: string | null;
   fallback_reason: string | null;
+  /** Registry id while starting or ready; null when idle. */
   model_id: string | null;
   port: number | null;
   context_size: number | null;

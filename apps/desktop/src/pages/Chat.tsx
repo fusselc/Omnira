@@ -11,6 +11,7 @@ import {
 } from "../lib/ipc";
 import { startStream, truncateToBudget, type StreamHandle } from "../lib/chat";
 import { sendBlocker } from "../lib/chatGuards";
+import { acquire, release } from "../lib/singleFlight";
 import { Markdown } from "../lib/markdown";
 import { StatusPill } from "../components/StatusPill";
 import { UnloadRuntimeButton } from "../components/UnloadRuntimeButton";
@@ -51,12 +52,14 @@ export function Chat({
   const restoredRef = useRef(false);
   const activeIdRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const startLockRef = useRef(false);
   const [lengthLimitedIds, setLengthLimitedIds] = useState<string[]>([]);
 
   // Renaming & Fallback states
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [dismissedFallback, setDismissedFallback] = useState(false);
+  const [startingModel, setStartingModel] = useState(false);
 
   const generating = generatingId !== null;
   const viewingStream = generating && activeId === generatingId;
@@ -76,7 +79,7 @@ export function Chat({
   const needsRuntimeReload =
     conversationModelId != null &&
     conversationModel?.status === "ok" &&
-    conversationModelId !== runtime.model_id &&
+    (conversationModelId !== runtime.model_id || runtime.state !== "ready") &&
     !generating;
   /**
    * The engine reports a model that is no longer in the registry (removed
@@ -195,7 +198,9 @@ export function Chat({
   }, [runtime.model_id]);
 
   const selectModel = async (modelId: string) => {
+    if (!acquire(startLockRef)) return;
     setError(null);
+    setStartingModel(true);
     try {
       await ipc.startRuntime(modelId);
       if (activeId) {
@@ -205,6 +210,8 @@ export function Chat({
     } catch (e) {
       setError(toAppError(e));
     } finally {
+      release(startLockRef);
+      setStartingModel(false);
       await refreshRuntime();
     }
   };
@@ -558,7 +565,7 @@ export function Chat({
             <select
               value={dropdownModelId ?? ""}
               onChange={(e) => e.target.value && void selectModel(e.target.value)}
-              disabled={runtime.state === "starting" || generating}
+              disabled={runtime.state === "starting" || generating || startingModel}
               aria-label="Model"
               className="max-w-56 rounded-lg border border-brand-border bg-brand-card px-3 py-1.5 text-xs text-zinc-100 outline-none focus:border-accent-primary/50 focus-visible:ring-1 focus-visible:ring-accent-primary/50"
             >
@@ -665,7 +672,11 @@ export function Chat({
             </p>
             <button
               onClick={() => void loadConversationModel()}
-              disabled={runtime.state === "starting" || conversationModel?.status !== "ok"}
+              disabled={
+                runtime.state === "starting" ||
+                startingModel ||
+                conversationModel?.status !== "ok"
+              }
               className="shrink-0 rounded-lg bg-accent-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-primary/90 disabled:opacity-40"
             >
               Load {conversationModel?.name ?? "model"}
