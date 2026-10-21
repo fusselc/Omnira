@@ -77,6 +77,97 @@ async fn start_runtime() -> runtime::ManagedRuntime {
     .expect("runtime must start (Vulkan or CPU fallback)")
 }
 
+async fn wait_for_idle_slot(
+    client: &reqwest::Client,
+    base: &str,
+    key: &str,
+    slot_id: i64,
+    budget: Duration,
+) -> Result<(), String> {
+    let deadline = tokio::time::Instant::now() + budget;
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return Err(format!(
+                "slot {slot_id} remained busy after disconnect for {budget:?}"
+            ));
+        }
+        let slots = client
+            .get(format!("{base}/slots"))
+            .bearer_auth(key)
+            .timeout(remaining)
+            .send()
+            .await
+            .map_err(|e| format!("slot probe: {e}"))?
+            .error_for_status()
+            .map_err(|e| format!("slot status: {e}"))?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| format!("slot body: {e}"))?;
+        let processing = slots
+            .as_array()
+            .and_then(|slots| {
+                slots
+                    .iter()
+                    .find(|slot| slot["id"].as_i64() == Some(slot_id))
+            })
+            .and_then(|slot| slot["is_processing"].as_bool())
+            .ok_or_else(|| format!("slot {slot_id} missing from monitoring response"))?;
+        if !processing {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(20).min(remaining)).await;
+    }
+}
+
+#[tokio::test]
+async fn cancellation_probe_cannot_pass_using_a_different_idle_slot() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let busy = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let server_busy = busy.clone();
+    let server = tokio::spawn(async move {
+        loop {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0; 1024];
+            while !request.windows(4).any(|part| part == b"\r\n\r\n") {
+                let n = socket.read(&mut buffer).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buffer[..n]);
+            }
+            let body = serde_json::json!([
+                {"id": 0, "is_processing": server_busy.load(std::sync::atomic::Ordering::SeqCst)},
+                {"id": 1, "is_processing": false},
+            ])
+            .to_string();
+            let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            let _ = socket.write_all(response.as_bytes()).await;
+        }
+    });
+    let client = reqwest::Client::new();
+    assert!(
+        wait_for_idle_slot(&client, &base, "test-key", 0, Duration::from_millis(100))
+            .await
+            .is_err(),
+        "another idle slot must not mask a generation that never cancels"
+    );
+    busy.store(false, std::sync::atomic::Ordering::SeqCst);
+    wait_for_idle_slot(&client, &base, "test-key", 0, Duration::from_millis(100))
+        .await
+        .unwrap();
+    assert!(
+        wait_for_idle_slot(&client, &base, "test-key", 2, Duration::from_millis(100))
+            .await
+            .is_err(),
+        "an absent slot must fail closed"
+    );
+    server.abort();
+}
+
 /// Spike (a): CORS/webview-origin. Sends a preflight OPTIONS request with the
 /// Tauri webview origin and inspects the Access-Control-* response headers.
 /// Also verifies an actual cross-origin-style POST works with the api-key.
@@ -93,10 +184,16 @@ async fn spike_cors_and_streaming() {
 
     // Preflight, as WebView2 would send it from http://tauri.localhost.
     let preflight = client
-        .request(reqwest::Method::OPTIONS, format!("{base}/v1/chat/completions"))
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("{base}/v1/chat/completions"),
+        )
         .header("Origin", "http://tauri.localhost")
         .header("Access-Control-Request-Method", "POST")
-        .header("Access-Control-Request-Headers", "authorization,content-type")
+        .header(
+            "Access-Control-Request-Headers",
+            "authorization,content-type",
+        )
         .send()
         .await
         .expect("preflight request");
@@ -155,16 +252,17 @@ async fn spike_cors_and_streaming() {
 }
 
 /// Spike (b): cancellation-on-disconnect. Starts a long generation, drops the
-/// connection after the first chunk, then proves the slot was freed by timing
-/// a second short request. With a single slot, a still-running generation
-/// would block the second request far beyond the threshold.
+/// connection while slot 0 is busy, then proves that exact slot becomes idle.
+/// A follow-up on slot 0 checks reuse separately from cancellation latency.
 #[tokio::test]
 async fn spike_cancellation_on_disconnect() {
     if !have_model() {
         eprintln!("SKIP: test model not present");
         return;
     }
+    println!("CANCELLATION: starting runtime");
     let rt = start_runtime().await;
+    println!("CANCELLATION: ready variant={:?}", rt.variant);
     let base = format!("http://127.0.0.1:{}", rt.port);
     let client = reqwest::Client::new();
 
@@ -176,24 +274,64 @@ async fn spike_cancellation_on_disconnect() {
             "messages": [{"role": "user", "content": "Write an extremely long story about the ocean. Do not stop."}],
             "stream": true,
             "max_tokens": 4000,
+            "ignore_eos": true,
+            "id_slot": 0,
         }))
+        .timeout(Duration::from_secs(30))
         .send()
         .await
         .expect("long request");
-    let _first = resp.chunk().await.expect("first chunk").expect("some bytes");
+    println!("CANCELLATION: long response headers received");
+    assert!(resp.status().is_success(), "long generation must succeed");
+    let _first = resp
+        .chunk()
+        .await
+        .expect("first chunk")
+        .expect("some bytes");
+    let slots = client
+        .get(format!("{base}/slots"))
+        .bearer_auth(&rt.api_key)
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await
+        .expect("busy-slot probe")
+        .error_for_status()
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap();
+    assert_eq!(
+        slots
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|slot| slot["id"] == 0)
+            .unwrap()["is_processing"],
+        true,
+        "negative control: slot 0 must still be generating before disconnect"
+    );
+    println!("CANCELLATION: first chunk received; disconnecting");
     drop(resp); // closes the connection mid-generation
 
-    // Give the server a moment to notice the disconnect.
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    let cancelled_at = Instant::now();
+    wait_for_idle_slot(&client, &base, &rt.api_key, 0, Duration::from_secs(20))
+        .await
+        .expect("the generating slot must become idle after disconnect");
+    println!(
+        "CANCELLATION: slot 0 became idle in {:?}",
+        cancelled_at.elapsed()
+    );
 
     // The slot must be free: a short request should complete promptly.
     let t0 = Instant::now();
+    println!("CANCELLATION: sending follow-up");
     let short = client
         .post(format!("{base}/v1/chat/completions"))
         .bearer_auth(&rt.api_key)
         .json(&serde_json::json!({
             "messages": [{"role": "user", "content": "Say OK."}],
             "max_tokens": 8,
+            "id_slot": 0,
         }))
         .timeout(Duration::from_secs(30))
         .send()
@@ -202,10 +340,6 @@ async fn spike_cancellation_on_disconnect() {
     assert!(short.status().is_success());
     let elapsed = t0.elapsed();
     println!("CANCELLATION SPIKE RESULT: follow-up completed in {elapsed:?}");
-    assert!(
-        elapsed < Duration::from_secs(20),
-        "slot was not freed after client disconnect -- escalation ladder applies"
-    );
 
     runtime::stop(rt).await;
 }

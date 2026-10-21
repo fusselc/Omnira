@@ -45,6 +45,10 @@ SQLite database should not ride along with roaming profile sync.
 
 ### Message persistence contract (stream boundaries)
 
+- Changing a thread's model binding requires activation to return `ready`
+  for that exact model id. Cancelled or superseded activations retain the
+  previous binding.
+
 - The user message is persisted via Tauri command **before** the streaming
   request starts.
 - On cancellation, the partial assistant content received so far is persisted

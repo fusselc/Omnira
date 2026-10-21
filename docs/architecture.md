@@ -131,11 +131,15 @@ go through typed Tauri commands backed by the Rust core, never HTTP.
   moment `/health` succeeds and the pipe is drained and discarded afterwards,
   so request-time logs (which could reference prompts) are never retained.
 - A start can be cancelled: `stop_runtime` during `starting` aborts the health
-  wait, kills the child, and leaves the runtime `stopped`. A newer
-  `start_runtime` supersedes an older in-flight one the same way.
+  wait and waits for child cleanup. It leaves the runtime `stopped` unless a
+  newer Use request has taken over; an older Stop must preserve that request's
+  status. Start ordering is reserved before model lookup and inspection, so
+  Stop during that work invalidates the older request.
 - Removing a model from the registry unloads the engine if that model is the
-  one loaded, so a conversation can never keep generating against a model the
-  user removed.
+  one loaded or starting, and waits for its child cleanup before deleting the
+  registry entry. Removal invalidates older start requests for that model even
+  if the same file is subsequently re-added. Completed shutdowns remain
+  observable to waiters after later switches.
 
 ## 5. Port allocation
 
@@ -158,7 +162,9 @@ port from log output.
 - **One loaded model, one active generation at a time.** Selecting a different
   model stops and restarts `llama-server`. Starting a model that is already
   ready is a no-op; overlapping start requests are serialized so two clicks
-  cannot spawn two children. Conversation history persists in
+  cannot spawn two children. Reusing a ready model still records the latest
+  selection, so an older request finishing inspection cannot replace it.
+  Conversation history persists in
   SQLite independently; only a live generation is interrupted. Sending while
   generating is disabled in the UI and rejected at the API.
 - **Context overflow:** oldest-first truncation. The Rust core knows the runtime

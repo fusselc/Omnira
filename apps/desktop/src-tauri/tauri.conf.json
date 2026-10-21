@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && powershell -ExecutionPolicy Bypass -File ../../scripts/packaging/fetch-llama-server.ps1 -ValidateOnly",
     "frontendDist": "../dist"
   },
   "app": {

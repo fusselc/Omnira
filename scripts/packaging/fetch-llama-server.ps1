@@ -11,6 +11,11 @@
 #
 # Usage:  powershell -ExecutionPolicy Bypass -File scripts/packaging/fetch-llama-server.ps1
 
+param(
+    [switch]$ValidateOnly,
+    [string]$BinaryDirectory
+)
+
 $ErrorActionPreference = "Stop"
 
 # ---- Pinned release -------------------------------------------------------
@@ -46,8 +51,24 @@ $BaseUrl = "https://github.com/ggml-org/llama.cpp/releases/download/$PinnedTag"
 
 # ---- Paths ----------------------------------------------------------------
 $RepoRoot   = Resolve-Path (Join-Path $PSScriptRoot "..\..")
-$BinDir     = Join-Path $RepoRoot "apps\desktop\src-tauri\binaries"
+$BinDir     = if ($BinaryDirectory) { $BinaryDirectory } else { Join-Path $RepoRoot "apps\desktop\src-tauri\binaries" }
 $CacheDir   = Join-Path $RepoRoot "scripts\packaging\.cache"
+
+function Assert-RequiredRuntimePayloads([string]$Path) {
+    foreach ($variant in @("vulkan", "cpu")) {
+        $server = Join-Path $Path "$variant\llama-server.exe"
+        if (-not (Test-Path -LiteralPath $server -PathType Leaf)) {
+            throw "fetch-llama-server.ps1: required $variant runtime payload is missing: $server. Run scripts/packaging/fetch-llama-server.ps1 before packaging."
+        }
+    }
+}
+
+if ($ValidateOnly) {
+    try { Assert-RequiredRuntimePayloads $BinDir }
+    catch { Write-Error $_; exit 1 }
+    Write-Host "Required Vulkan and CPU runtime payloads are present."
+    exit 0
+}
 
 New-Item -ItemType Directory -Force -Path $BinDir, $CacheDir | Out-Null
 
@@ -116,6 +137,9 @@ valid checksum matches the pinned artifact. Refusing to continue.
 
     Write-Host "[ready ] $($artifact.Variant): $(Join-Path $extractDir 'llama-server.exe')"
 }
+
+try { Assert-RequiredRuntimePayloads $BinDir }
+catch { Write-Error $_; exit 1 }
 
 # Reserve the CUDA resource slot (tauri.conf.json binaries/cuda -> runtimes/cuda)
 # without downloading an unpinned artifact.

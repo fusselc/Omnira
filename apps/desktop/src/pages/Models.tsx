@@ -13,6 +13,39 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { UnloadRuntimeButton } from "../components/UnloadRuntimeButton";
 import { formatBytes, formatWhen } from "../lib/format";
 
+export function ModelUseButton({
+  active,
+  disabled,
+  onUse,
+}: {
+  active: boolean;
+  disabled: boolean;
+  onUse: () => void;
+}) {
+  if (active) {
+    return (
+      <button
+        type="button"
+        disabled
+        className="rounded-lg border border-brand-border px-3 py-1.5 text-xs disabled:opacity-40"
+      >
+        In use
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onUse}
+      disabled={disabled}
+      className="flex items-center gap-1.5 rounded-lg border border-brand-border px-3 py-1.5 text-xs hover:bg-brand-hover disabled:opacity-40"
+    >
+      <Play size={13} />
+      Use
+    </button>
+  );
+}
+
 export function Models({
   runtime,
   refreshRuntime,
@@ -241,14 +274,11 @@ export function Models({
                       <Pencil size={13} />
                     </button>
                   )}
-                  <button
-                    onClick={() => void useModel(m.id)}
+                  <ModelUseButton
+                    active={active}
                     disabled={m.status !== "ok" || busy || starting || runtime.state === "starting"}
-                    className="flex items-center gap-1.5 rounded-lg border border-brand-border px-3 py-1.5 text-xs hover:bg-brand-hover disabled:opacity-40"
-                  >
-                    <Play size={13} />
-                    {active ? "Restart" : "Use"}
-                  </button>
+                    onUse={() => void useModel(m.id)}
+                  />
                   {(active || starting) && (
                     <UnloadRuntimeButton
                       runtime={runtime}

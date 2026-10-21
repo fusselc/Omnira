@@ -12,6 +12,7 @@ import {
 import { startStream, truncateToBudget, type StreamHandle } from "../lib/chat";
 import { sendBlocker } from "../lib/chatGuards";
 import { acquire, release } from "../lib/singleFlight";
+import { activateConversationModel } from "../lib/modelActivation";
 import { Markdown } from "../lib/markdown";
 import { StatusPill } from "../components/StatusPill";
 import { UnloadRuntimeButton } from "../components/UnloadRuntimeButton";
@@ -202,9 +203,7 @@ export function Chat({
     setError(null);
     setStartingModel(true);
     try {
-      await ipc.startRuntime(modelId);
-      if (activeId) {
-        await ipc.setConversationModel(activeId, modelId);
+      if (await activateConversationModel(modelId, activeId)) {
         await loadConversations();
       }
     } catch (e) {

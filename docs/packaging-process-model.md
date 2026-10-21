@@ -86,6 +86,10 @@ Runtime binaries are acquired exclusively through
    artifact. No silent fallback, no partial packaging.
 4. Extracts the binaries into `apps/desktop/src-tauri/binaries/` (gitignored)
    for bundling as Tauri resources.
+5. Tauri's `beforeBuildCommand` runs the fetch script in validation-only mode;
+   it exits nonzero with the missing variant named unless both
+   `binaries/vulkan/llama-server.exe` and `binaries/cpu/llama-server.exe`
+   exist. CUDA remains optional and is not checked.
 
 Dev mode uses the same script, or a user-supplied runtime path via Settings.
 

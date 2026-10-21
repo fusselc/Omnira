@@ -88,14 +88,12 @@ pub fn add_model(state: State<AppState>, path: String) -> Result<ModelEntry, App
 /// conversation can never keep generating against a model the user removed.
 #[tauri::command]
 pub async fn remove_model(state: State<'_, AppState>, id: String) -> Result<(), AppError> {
-    if state.runtime.status().model_id.as_deref() == Some(id.as_str()) {
-        logging::info("model.remove", "unloading the running engine first");
-        if let Some(rt) = state.runtime.take_runtime() {
-            runtime::stop(rt).await;
-        }
-    }
     logging::info("model.remove", "registry entry only");
-    state.storage.remove_model(&id)
+    let removal = state.runtime.begin_removal(&id);
+    removal.wait_for_owned_shutdown().await?;
+    let removed = state.storage.remove_model(&id);
+    drop(removal);
+    removed
 }
 
 /// Renames the registry display name only; never renames the file on disk.
@@ -220,6 +218,12 @@ pub async fn start_runtime(
     state: State<'_, AppState>,
     model_id: String,
 ) -> Result<RuntimeStatus, AppError> {
+    // Reserve ordering FIRST: a Stop processed after this point must
+    // invalidate this Start even if inspection is still running. Pre-work
+    // failures below drop `ticket` (abandoned intent is a no-op by design:
+    // reservation publishes nothing to latest/phase/claim).
+    let ticket = state.runtime.reserve_start_intent(&model_id);
+
     let model = state.storage.get_model(&model_id)?.ok_or_else(|| {
         AppError::new(ErrorCode::ModelFileMissing, Some("unknown model id".into()))
     })?;
@@ -238,7 +242,7 @@ pub async fn start_runtime(
 
     let status = state
         .runtime
-        .start_serialized(&model_id, move |token| async move {
+        .start_with_ticket(&model_id, ticket, move |token| async move {
             runtime::start_cancellable(
                 resource_dir,
                 override_path,
@@ -269,10 +273,7 @@ pub async fn start_runtime(
 /// running llama-server. Always leaves the runtime in `stopped`.
 #[tauri::command]
 pub async fn stop_runtime(state: State<'_, AppState>) -> Result<RuntimeStatus, AppError> {
-    if let Some(rt) = state.runtime.take_runtime() {
-        runtime::stop(rt).await;
-    }
-    Ok(state.runtime.status())
+    state.runtime.stop_and_wait().await
 }
 
 // ---------------------------------------------------------------------------
