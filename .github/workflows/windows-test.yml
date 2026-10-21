@@ -1,0 +1,37 @@
+name: Windows tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  windows-test:
+    name: windows-test
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci
+      - name: Rust unit tests (no fixtures required)
+        working-directory: apps/desktop/src-tauri
+        run: cargo test --locked --lib
+      - name: Rust storage tests (no fixtures required)
+        working-directory: apps/desktop/src-tauri
+        run: cargo test --locked --test storage_tests
+      - name: Rust runtime spikes (fixture-dependent; SKIP without model/runtimes is expected and is not runtime coverage)
+        working-directory: apps/desktop/src-tauri
+        run: cargo test --locked --test runtime_spikes -- --nocapture
+      - run: npm test
+      - run: npm run build
