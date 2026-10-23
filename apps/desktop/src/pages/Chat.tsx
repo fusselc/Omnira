@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Send, Square, Trash2, Boxes, Pencil, AlertTriangle } from "lucide-react";
+import { Plus, Send, Square, Trash2, Boxes, Pencil, AlertTriangle, ArrowDown } from "lucide-react";
 import {
   ipc,
   toAppError,
@@ -11,7 +11,7 @@ import {
 } from "../lib/ipc";
 import { startStream, truncateToBudget, type StreamHandle } from "../lib/chat";
 import { sendBlocker } from "../lib/chatGuards";
-import { canSubmitDraft, composerDisabled } from "../lib/chatUi";
+import { canSubmitDraft, composerDisabled, isNearBottom } from "../lib/chatUi";
 import { acquire, release } from "../lib/singleFlight";
 import { Markdown } from "../lib/markdown";
 import { StatusPill } from "../components/StatusPill";
@@ -50,6 +50,7 @@ export function Chat({
   const streamBufferRef = useRef("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const restoredRef = useRef(false);
   const activeIdRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
@@ -163,11 +164,16 @@ export function Chat({
     void ipc.listMessages(activeId).then(setMessages);
   }, [activeId]);
 
-  useEffect(() => {
+  const scrollToLatest = useCallback(() => {
     stickToBottomRef.current = true;
+    setShowJumpToLatest(false);
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [activeId]);
+  }, []);
+
+  useEffect(() => {
+    scrollToLatest();
+  }, [activeId, scrollToLatest]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -305,6 +311,7 @@ export function Chat({
     if (!acquire(sendLockRef)) return;
     setSending(true);
     setError(null);
+    scrollToLatest();
     setDraft("");
 
     let persistedUser = false;
@@ -735,8 +742,9 @@ export function Chat({
           onScroll={() => {
             const el = scrollRef.current;
             if (!el) return;
-            stickToBottomRef.current =
-              el.scrollHeight - el.scrollTop - el.clientHeight < 64;
+            const near = isNearBottom(el);
+            stickToBottomRef.current = near;
+            setShowJumpToLatest(!near);
           }}
           className="flex-1 overflow-y-auto px-5 py-4"
         >
@@ -824,7 +832,17 @@ export function Chat({
         </div>
 
         {/* Composer */}
-        <footer className="border-t border-brand-border px-5 py-4">
+        <footer className="relative border-t border-brand-border px-5 py-4">
+          {showJumpToLatest && (messages.length > 0 || viewingStream) && (
+            <button
+              type="button"
+              onClick={scrollToLatest}
+              className="absolute bottom-full left-1/2 mb-3 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-brand-border bg-brand-card px-3 py-1.5 text-xs text-zinc-100 shadow-lg hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50"
+            >
+              <ArrowDown size={12} aria-hidden="true" />
+              Jump to latest
+            </button>
+          )}
           <div className="mx-auto flex max-w-3xl items-end gap-2">
             <div aria-live="polite" aria-atomic="true" className="sr-only">
               {generating

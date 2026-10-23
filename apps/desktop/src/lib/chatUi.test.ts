@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { canSubmitDraft, composerDisabled, type ComposerLockInput } from "./chatUi";
+import {
+  canSubmitDraft,
+  composerDisabled,
+  isNearBottom,
+  type ComposerLockInput,
+} from "./chatUi";
 
 const idle: ComposerLockInput = {
   canSend: true,
@@ -24,6 +29,24 @@ describe("composerDisabled", () => {
   it("locks while generating or when the send guard blocks", () => {
     expect(composerDisabled({ ...idle, generating: true })).toBe(true);
     expect(composerDisabled({ ...idle, canSend: false })).toBe(true);
+  });
+});
+
+describe("isNearBottom", () => {
+  const view = (scrollTop: number) => ({ scrollHeight: 1000, clientHeight: 400, scrollTop });
+
+  it("follows when at or just above the end", () => {
+    expect(isNearBottom(view(600))).toBe(true);
+    expect(isNearBottom(view(540))).toBe(true);
+  });
+
+  it("stops following once the user scrolls up past the threshold", () => {
+    expect(isNearBottom(view(536))).toBe(false);
+    expect(isNearBottom(view(0))).toBe(false);
+  });
+
+  it("treats content shorter than the viewport as at the end", () => {
+    expect(isNearBottom({ scrollHeight: 300, clientHeight: 400, scrollTop: 0 })).toBe(true);
   });
 });
 

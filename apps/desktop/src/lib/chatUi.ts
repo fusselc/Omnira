@@ -23,6 +23,17 @@ export function composerDisabled({
   return !canSend || generating || sending || startingModel;
 }
 
+/** Distance from the bottom within which the thread keeps following new text. */
+export const FOLLOW_THRESHOLD_PX = 64;
+
+/** Whether the thread is scrolled close enough to the end to keep following. */
+export function isNearBottom(
+  el: Pick<HTMLElement, "scrollHeight" | "scrollTop" | "clientHeight">,
+  threshold = FOLLOW_THRESHOLD_PX,
+): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+}
+
 /** Whether the Send button may submit `draft`. */
 export function canSubmitDraft(input: ComposerLockInput, draft: string): boolean {
   return !composerDisabled(input) && draft.trim().length > 0;
