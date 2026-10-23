@@ -491,7 +491,7 @@ export function Chat({
         </div>
         <div className="flex-1 overflow-y-auto px-2 pb-2">
           {conversations.length === 0 && (
-            <p className="px-3 py-6 text-center text-xs text-zinc-600">
+            <p className="px-3 py-6 text-center text-xs text-brand-textMuted">
               No conversations yet. Your chats stay on this computer.
             </p>
           )}
@@ -585,7 +585,7 @@ export function Chat({
                   >
                     {c.title}
                   </span>
-                  <span className="text-[10px] text-zinc-600 group-hover:hidden group-focus-within:hidden">
+                  <span className="text-[10px] text-brand-textMuted group-hover:hidden group-focus-within:hidden">
                     {formatWhen(c.updated_at)}
                   </span>
                   <div className="hidden shrink-0 items-center gap-1 group-hover:flex group-focus-within:flex">
@@ -884,7 +884,7 @@ export function Chat({
           ) : (
             <div className="mx-auto flex max-w-3xl flex-col gap-4">
               {truncatedForId === activeId && (
-                <p className="text-center text-[11px] text-zinc-600">
+                <p className="text-center text-[11px] text-brand-textMuted">
                   Earlier messages are not included -- this conversation is
                   longer than the model can read at once.
                 </p>
@@ -952,7 +952,7 @@ export function Chat({
                 engineErrorMessage: engineError?.message ?? null,
               })}
               disabled={composerLocked}
-              className="flex-1 resize-none rounded-xl border border-brand-border bg-brand-card px-4 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-accent-primary/50 focus-visible:ring-1 focus-visible:ring-accent-primary/50 disabled:opacity-60"
+              className="flex-1 resize-none rounded-xl border border-brand-border bg-brand-card px-4 py-3 text-sm outline-none placeholder:text-brand-textMuted focus:border-accent-primary/50 focus-visible:ring-1 focus-visible:ring-accent-primary/50 disabled:cursor-not-allowed disabled:opacity-80"
             />
             {generating ? (
               <button
@@ -1000,12 +1000,12 @@ function MessageBubble({
     <div className="min-w-0 max-w-[85%] select-text self-start rounded-2xl rounded-bl-sm bg-brand-card px-4 py-3">
       <Markdown text={message.content} />
       {message.status === "interrupted" && (
-        <p className="mt-1 text-[11px] italic text-zinc-600">
+        <p className="mt-1 text-[11px] italic text-brand-textMuted">
           Generation stopped -- partial response kept.
         </p>
       )}
       {lengthLimited && message.status === "complete" && (
-        <p className="mt-1 text-[11px] italic text-zinc-600">
+        <p className="mt-1 text-[11px] italic text-brand-textMuted">
           Response reached the length limit.
         </p>
       )}
