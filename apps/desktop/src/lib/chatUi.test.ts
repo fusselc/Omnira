@@ -111,6 +111,7 @@ describe("composerPlaceholder", () => {
     generating: false,
     viewingStream: false,
     startingModel: false,
+    loadingThread: false,
     conversationModelUnregistered: false,
     conversationModelFileMissing: false,
     conversationModelInvalid: false,
@@ -134,6 +135,12 @@ describe("composerPlaceholder", () => {
       composerPlaceholder({ ...ready, runtimeState: "starting", needsRuntimeReload: true }),
     ).toBe("Starting model...");
     expect(composerPlaceholder({ ...ready, startingModel: true })).toBe("Starting model...");
+  });
+
+  it("says the conversation is loading instead of inviting a message it would refuse", () => {
+    expect(composerPlaceholder({ ...ready, loadingThread: true })).toBe(
+      "Loading conversation...",
+    );
   });
 
   it("explains a reply in progress here or in another conversation", () => {

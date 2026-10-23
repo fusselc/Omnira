@@ -997,6 +997,7 @@ export function Chat({
                 generating,
                 viewingStream,
                 startingModel,
+                loadingThread: threadLoading,
                 conversationModelUnregistered,
                 conversationModelFileMissing,
                 conversationModelInvalid,

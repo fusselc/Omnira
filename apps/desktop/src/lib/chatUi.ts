@@ -89,6 +89,8 @@ export interface ComposerPlaceholderInput {
   viewingStream: boolean;
   /** A model switch requested from Chat is in flight. */
   startingModel: boolean;
+  /** The selected conversation's history has not loaded yet. */
+  loadingThread: boolean;
   conversationModelUnregistered: boolean;
   conversationModelFileMissing: boolean;
   conversationModelInvalid: boolean;
@@ -109,6 +111,7 @@ export function composerPlaceholder(s: ComposerPlaceholderInput): string {
       : "Another conversation is still replying...";
   }
   if (s.startingModel || s.runtimeState === "starting") return "Starting model...";
+  if (s.loadingThread) return "Loading conversation...";
   if (s.conversationModelUnregistered) {
     return "This conversation's model is no longer available...";
   }
