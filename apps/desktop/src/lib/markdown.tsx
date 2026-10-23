@@ -65,7 +65,7 @@ function CodeBlock({ code }: { code: string }) {
       >
         {copied ? "Copied" : "Copy"}
       </button>
-      <pre className="overflow-x-auto rounded-lg border border-brand-border bg-brand-card p-3 font-mono text-[0.8rem] leading-relaxed">
+      <pre className="max-w-full overflow-x-auto whitespace-pre rounded-lg border border-brand-border bg-brand-card p-3 font-mono text-[0.8rem] leading-relaxed">
         <code>{code}</code>
       </pre>
     </div>
@@ -163,5 +163,5 @@ export function Markdown({ text }: { text: string }) {
     );
   }
 
-  return <div className="text-sm">{blocks}</div>;
+  return <div className="min-w-0 break-words text-sm">{blocks}</div>;
 }

@@ -48,6 +48,14 @@ describe("Markdown", () => {
     expect(html).toContain("<em>italic</em>");
   });
 
+  it("wraps long prose but scrolls code horizontally instead of widening the bubble", () => {
+    const html = render(`${"x".repeat(300)}\n\n\`\`\`\n${"y".repeat(300)}\n\`\`\``);
+    const rootClasses = /^<div class="([^"]*)"/.exec(html)?.[1].split(" ") ?? [];
+    expect(rootClasses).toEqual(expect.arrayContaining(["min-w-0", "break-words"]));
+    const preClasses = /<pre class="([^"]*)"/.exec(html)?.[1].split(" ") ?? [];
+    expect(preClasses).toEqual(expect.arrayContaining(["overflow-x-auto", "whitespace-pre"]));
+  });
+
   it("keeps an unterminated fence as a live code block instead of dropping content", () => {
     const html = render("```\nstill streaming, no closing fence yet");
     expect(html).toContain("<pre");
