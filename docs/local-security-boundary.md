@@ -79,6 +79,21 @@ Configured in Phase 1 from the first scaffold; audited in
   Release builds therefore ship without devtools support; debug/`tauri dev`
   builds may still allow inspector access per Tauri defaults.
 
+### Planned: Phase 7 image worker (not shipped)
+
+Recorded with maintainer sign-off in
+[ADR 0002](adr/0002-image-provider-worker.md); contract in
+[image-provider.md](image-provider.md):
+
+- The image worker (`sd-cli`) runs one process per job and opens **no
+  listening socket**, so there is no port or key to protect. It is supervised
+  under the same Job Object as `llama-server`.
+- `sd-server` is not shipped while it lacks per-session key authentication and
+  reflects arbitrary `Origin` values in CORS. If it is ever adopted, it follows
+  Layer 2 above (loopback bind, per-session key).
+- The webview never talks to the image worker. Images reach the UI only through
+  typed Tauri commands, as `data:` URLs, so the CSP above is unchanged.
+
 ## 5. Network defaults
 
 - Zero external network calls by default: no telemetry, accounts, analytics,

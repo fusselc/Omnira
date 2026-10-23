@@ -67,8 +67,10 @@ extension.
 
 The shipped product is intentionally narrow: local GGUF chat only (Vulkan/CPU).
 Public messaging must always separate current shipped status from long-term
-vision. Phase 6 CUDA for ChatProvider is next approved; Phase 7 Create is
-deferred until end-to-end criteria are met.
+vision. Phase 6 CUDA for ChatProvider is next approved; Phase 7 image
+generation is approved for design and a headless spike in parallel, and Create
+stays hidden until the Phase 7 done criteria in [roadmap.md](roadmap.md) are
+met.
 
 ## 6. Non-goals
 

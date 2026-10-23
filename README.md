@@ -19,12 +19,14 @@ Work on `main` since that tag (not yet a new release):
 
 **Next approved engineering:** Phase 6 -- CUDA acceleration for the **existing
 ChatProvider only** (same Chat UI; accelerator detail in Advanced Diagnostics).
+In parallel, Phase 7 image generation is approved for **design and a headless
+backend spike only** ([ADR 0002](docs/adr/0002-image-provider-worker.md)).
 See [docs/roadmap.md](docs/roadmap.md) and
 [docs/capability-map.md](docs/capability-map.md).
 
-**Deferred:** Phase 7 image generation / Create. Create must not become an
-active visible screen until end-to-end completion criteria are met (see the
-capability map).
+**Not shipped:** image generation / Create. Create must not become an active
+visible screen until the Phase 7 done criteria in
+[docs/roadmap.md](docs/roadmap.md#phase-7-done-criteria) are met.
 
 Nothing in the long-term vision section below is shipped unless listed under
 **Shipped** above.
