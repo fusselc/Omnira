@@ -11,7 +11,14 @@ import {
 } from "../lib/ipc";
 import { startStream, truncateToBudget, type StreamHandle } from "../lib/chat";
 import { sendBlocker } from "../lib/chatGuards";
-import { canSubmitDraft, composerDisabled, isNearBottom } from "../lib/chatUi";
+import {
+  canSubmitDraft,
+  composerDisabled,
+  isNearBottom,
+  isSubmitKey,
+  replyAnnouncement,
+  type ReplyOutcome,
+} from "../lib/chatUi";
 import { acquire, release } from "../lib/singleFlight";
 import { Markdown } from "../lib/markdown";
 import { StatusPill } from "../components/StatusPill";
@@ -51,6 +58,9 @@ export function Chat({
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [replyOutcome, setReplyOutcome] = useState<ReplyOutcome | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const wasGeneratingRef = useRef(false);
   const restoredRef = useRef(false);
   const activeIdRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
@@ -180,6 +190,17 @@ export function Chat({
     if (!el || !stickToBottomRef.current) return;
     el.scrollTop = el.scrollHeight;
   }, [messages, streamingText]);
+
+  // The composer is disabled while generating, which drops its focus. Give it
+  // back when the reply ends, unless the user has moved to another control.
+  useEffect(() => {
+    const wasGenerating = wasGeneratingRef.current;
+    wasGeneratingRef.current = generating;
+    if (!wasGenerating || generating || !visible) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    composerRef.current?.focus();
+  }, [generating, visible]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -350,6 +371,7 @@ export function Chat({
       setTruncatedForId(truncated ? convoId : null);
 
       streamBufferRef.current = "";
+      setReplyOutcome(null);
       setGeneratingId(convoId);
       setStreamingText("");
 
@@ -393,6 +415,11 @@ export function Chat({
           if (mountedRef.current) setStreamingText(streamBufferRef.current);
         },
         onDone: (reason) => {
+          if (mountedRef.current) {
+            setReplyOutcome(
+              reason === "cancelled" ? "stopped" : reason === "length" ? "length" : "complete",
+            );
+          }
           void persistAssistant(
             streamBufferRef.current,
             reason === "cancelled" ? "interrupted" : "complete",
@@ -401,6 +428,9 @@ export function Chat({
         },
         onError: (err) => {
           // Persist whatever partial content arrived, then surface the error.
+          if (mountedRef.current) {
+            setReplyOutcome(err.code === "GenerationCancelled" ? "stopped" : "failed");
+          }
           void persistAssistant(streamBufferRef.current, "interrupted");
           if (mountedRef.current && err.code !== "GenerationCancelled") {
             setError(err);
@@ -454,6 +484,7 @@ export function Chat({
             <div
               key={c.id}
               tabIndex={0}
+              aria-current={c.id === activeId ? "true" : undefined}
               onKeyDown={(e) => {
                 if (e.key === "Escape" && pendingDelete?.id === c.id) {
                   e.preventDefault();
@@ -513,7 +544,7 @@ export function Chat({
                       onClick={() => void confirmDelete(c.id)}
                       className="rounded bg-accent-danger px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-accent-danger/90"
                     >
-                      Click again to delete
+                      Delete
                     </button>
                     <button
                       type="button"
@@ -845,17 +876,14 @@ export function Chat({
           )}
           <div className="mx-auto flex max-w-3xl items-end gap-2">
             <div aria-live="polite" aria-atomic="true" className="sr-only">
-              {generating
-                ? streamingText
-                  ? "Generating a response"
-                  : "Thinking..."
-                : ""}
+              {replyAnnouncement(generating, Boolean(streamingText), replyOutcome)}
             </div>
             <textarea
+              ref={composerRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
+                if (isSubmitKey(e.nativeEvent)) {
                   e.preventDefault();
                   void send();
                 }

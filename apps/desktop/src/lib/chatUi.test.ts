@@ -3,6 +3,8 @@ import {
   canSubmitDraft,
   composerDisabled,
   isNearBottom,
+  isSubmitKey,
+  replyAnnouncement,
   type ComposerLockInput,
 } from "./chatUi";
 
@@ -47,6 +49,51 @@ describe("isNearBottom", () => {
 
   it("treats content shorter than the viewport as at the end", () => {
     expect(isNearBottom({ scrollHeight: 300, clientHeight: 400, scrollTop: 0 })).toBe(true);
+  });
+});
+
+describe("isSubmitKey", () => {
+  const key = (overrides: Partial<Parameters<typeof isSubmitKey>[0]>) => ({
+    key: "Enter",
+    shiftKey: false,
+    isComposing: false,
+    keyCode: 13,
+    ...overrides,
+  });
+
+  it("sends on plain Enter", () => {
+    expect(isSubmitKey(key({}))).toBe(true);
+  });
+
+  it("keeps Shift+Enter as a newline", () => {
+    expect(isSubmitKey(key({ shiftKey: true }))).toBe(false);
+  });
+
+  it("ignores Enter that confirms an IME composition", () => {
+    expect(isSubmitKey(key({ isComposing: true }))).toBe(false);
+    expect(isSubmitKey(key({ keyCode: 229 }))).toBe(false);
+  });
+
+  it("ignores other keys", () => {
+    expect(isSubmitKey(key({ key: "a", keyCode: 65 }))).toBe(false);
+  });
+});
+
+describe("replyAnnouncement", () => {
+  it("announces thinking, then generating, without streaming tokens", () => {
+    expect(replyAnnouncement(true, false, null)).toBe("Thinking...");
+    expect(replyAnnouncement(true, true, "complete")).toBe("Generating a response");
+  });
+
+  it("announces how the last reply ended once generation finishes", () => {
+    expect(replyAnnouncement(false, false, "complete")).toBe("Response complete.");
+    expect(replyAnnouncement(false, false, "length")).toMatch(/length limit/);
+    expect(replyAnnouncement(false, false, "stopped")).toMatch(/Partial response kept/);
+    expect(replyAnnouncement(false, false, "failed")).toMatch(/could not be completed/);
+  });
+
+  it("stays silent before any reply", () => {
+    expect(replyAnnouncement(false, false, null)).toBe("");
   });
 });
 
