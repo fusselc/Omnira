@@ -12,6 +12,11 @@ export interface ComposerLockInput {
   sending: boolean;
   /** The user picked a model and its engine is being started. */
   startingModel: boolean;
+  /**
+   * The selected conversation's messages have not arrived yet. Sending now
+   * would build context from the wrong (or empty) history.
+   */
+  loadingThread: boolean;
 }
 
 /** Whether the composer textarea must refuse input right now. */
@@ -20,8 +25,9 @@ export function composerDisabled({
   generating,
   sending,
   startingModel,
+  loadingThread,
 }: ComposerLockInput): boolean {
-  return !canSend || generating || sending || startingModel;
+  return !canSend || generating || sending || startingModel || loadingThread;
 }
 
 /** Distance from the bottom within which the thread keeps following new text. */

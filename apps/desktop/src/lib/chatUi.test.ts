@@ -16,6 +16,7 @@ const idle: ComposerLockInput = {
   generating: false,
   sending: false,
   startingModel: false,
+  loadingThread: false,
 };
 
 describe("composerDisabled", () => {
@@ -29,6 +30,10 @@ describe("composerDisabled", () => {
 
   it("locks while a model switch is starting even if the old engine is still ready", () => {
     expect(composerDisabled({ ...idle, startingModel: true })).toBe(true);
+  });
+
+  it("locks until the selected conversation's history has loaded", () => {
+    expect(composerDisabled({ ...idle, loadingThread: true })).toBe(true);
   });
 
   it("locks while generating or when the send guard blocks", () => {

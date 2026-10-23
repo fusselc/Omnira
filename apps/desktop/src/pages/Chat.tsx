@@ -62,6 +62,14 @@ export function Chat({
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [lastRuntimeModelId, setLastRuntimeModelId] = useState<string | null>(null);
   const [replyOutcome, setReplyOutcome] = useState<ReplyOutcome | null>(null);
+  /** Conversation whose history `messages` currently holds. */
+  const [loadedThreadId, setLoadedThreadId] = useState<string | null>(null);
+  /** Set by `send` for a thread it just created, which has no history to fetch. */
+  const createdThreadRef = useRef<string | null>(null);
+  /** Reply text that streamed but could not be written to the database. */
+  const [unsavedReply, setUnsavedReply] = useState<{ threadId: string; text: string } | null>(
+    null,
+  );
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const wasGeneratingRef = useRef(false);
   const restoredRef = useRef(false);
@@ -108,7 +116,14 @@ export function Chat({
     runtimeModel?.status !== "ok";
   const canSend =
     sendBlocker({ runtime, models, conversationModelId, generating }) === null;
-  const composerLock = { canSend, generating, sending, startingModel };
+  const threadLoading = activeId !== null && loadedThreadId !== activeId;
+  const composerLock = {
+    canSend,
+    generating,
+    sending,
+    startingModel,
+    loadingThread: threadLoading,
+  };
   const composerLocked = composerDisabled(composerLock);
   /** Prefer the core's last_error while the engine is in error; otherwise the local stream/IPC error. */
   const engineError =
@@ -183,9 +198,31 @@ export function Chat({
   useEffect(() => {
     if (!activeId) {
       setMessages([]);
+      setLoadedThreadId(null);
       return;
     }
-    void ipc.listMessages(activeId).then(setMessages);
+    if (createdThreadRef.current === activeId) {
+      createdThreadRef.current = null;
+      setLoadedThreadId(activeId);
+      return;
+    }
+    // A slower load for a thread the user already left must not overwrite
+    // the one now on screen.
+    let current = true;
+    setMessages([]);
+    ipc
+      .listMessages(activeId)
+      .then((list) => {
+        if (!current) return;
+        setMessages(list);
+        setLoadedThreadId(activeId);
+      })
+      .catch((e) => {
+        if (current) setError(toAppError(e));
+      });
+    return () => {
+      current = false;
+    };
   }, [activeId]);
 
   const scrollToLatest = useCallback(() => {
@@ -286,6 +323,7 @@ export function Chat({
     try {
       await ipc.deleteConversation(id);
       if (activeIdRef.current === id) setActiveId(null);
+      setUnsavedReply((prev) => (prev?.threadId === id ? null : prev));
       await loadConversations();
     } catch (e) {
       setError(toAppError(e));
@@ -347,6 +385,7 @@ export function Chat({
     if (!acquire(sendLockRef)) return;
     setSending(true);
     setError(null);
+    setUnsavedReply(null);
     scrollToLatest();
     setDraft("");
 
@@ -358,6 +397,7 @@ export function Chat({
         const title = content.length > 48 ? `${content.slice(0, 48)}...` : content;
         const convo = await ipc.createConversation(title, runtime.model_id);
         convoId = convo.id;
+        createdThreadRef.current = convoId;
         setActiveId(convoId);
         await loadConversations();
       } else if (messages.length === 0) {
@@ -405,8 +445,10 @@ export function Chat({
           finishUi();
           return;
         }
+        let stored = false;
         try {
           const saved = await ipc.addMessage(convoId, "assistant", text, status);
+          stored = true;
           if (lengthLimited) {
             setLengthLimitedIds((prev) =>
               prev.includes(saved.id) ? prev : [...prev, saved.id],
@@ -417,7 +459,10 @@ export function Chat({
             setMessages(listed);
           }
         } catch (e) {
-          if (mountedRef.current) setError(toAppError(e));
+          if (mountedRef.current) {
+            setError(toAppError(e));
+            if (!stored && text.length > 0) setUnsavedReply({ threadId: convoId, text });
+          }
         } finally {
           finishUi();
           if (mountedRef.current) await loadConversations();
@@ -814,7 +859,7 @@ export function Chat({
           className="flex-1 overflow-y-auto px-5 py-4"
         >
           {/* Empty states are first-class (docs/design-principles.md) */}
-          {runtime.state === "stopped" && messages.length === 0 && !viewingStream ? (
+          {threadLoading ? null : runtime.state === "stopped" && messages.length === 0 && !viewingStream ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-card text-accent-primary">
                 <Boxes size={26} />
@@ -896,6 +941,14 @@ export function Chat({
                   lengthLimited={lengthLimitedIds.includes(m.id)}
                 />
               ))}
+              {unsavedReply?.threadId === activeId && (
+                <div className="min-w-0 max-w-[85%] select-text self-start rounded-2xl rounded-bl-sm bg-brand-card px-4 py-3">
+                  <Markdown text={unsavedReply.text} />
+                  <p className="mt-1 text-[11px] italic text-brand-textMuted">
+                    Not saved -- this reply will be gone after Omnira closes.
+                  </p>
+                </div>
+              )}
               {viewingStream && streamingText !== null && (
                 <div className="min-w-0 max-w-[85%] select-text self-start rounded-2xl rounded-bl-sm bg-brand-card px-4 py-3">
                   {streamingText === "" ? (
