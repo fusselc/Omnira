@@ -14,9 +14,11 @@ import { sendBlocker } from "../lib/chatGuards";
 import {
   canSubmitDraft,
   composerDisabled,
+  composerPlaceholder,
   isNearBottom,
   isSubmitKey,
   replyAnnouncement,
+  retryModelId,
   type ReplyOutcome,
 } from "../lib/chatUi";
 import { acquire, release } from "../lib/singleFlight";
@@ -58,6 +60,7 @@ export function Chat({
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [lastRuntimeModelId, setLastRuntimeModelId] = useState<string | null>(null);
   const [replyOutcome, setReplyOutcome] = useState<ReplyOutcome | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const wasGeneratingRef = useRef(false);
@@ -112,6 +115,17 @@ export function Chat({
     runtime.state === "error" ? (runtime.last_error ?? error) : error;
   const showErrorEmpty =
     runtime.state === "error" && messages.length === 0 && !viewingStream;
+  const modelStarting = runtime.state === "starting" || startingModel;
+  const retryId =
+    runtime.state === "error"
+      ? retryModelId(models, conversationModelId, lastRuntimeModelId)
+      : null;
+  /** A thread with history, no model bound to it, and no engine running. */
+  const showNoModelForHistory =
+    runtime.state === "stopped" &&
+    !startingModel &&
+    conversationModelId == null &&
+    messages.length > 0;
 
   const loadConversations = useCallback(async () => {
     const list = await ipc.listConversations();
@@ -227,6 +241,7 @@ export function Chat({
 
   useEffect(() => {
     setDismissedFallback(false);
+    if (runtime.model_id) setLastRuntimeModelId(runtime.model_id);
   }, [runtime.model_id]);
 
   const selectModel = async (modelId: string) => {
@@ -703,7 +718,21 @@ export function Chat({
           </div>
         )}
 
-        {needsRuntimeReload && (
+        {showNoModelForHistory && (
+          <div className="mx-5 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent-warning/30 bg-accent-warning/10 px-4 py-3 text-sm">
+            <p className="text-brand-textMuted">
+              No model is running. Choose a model to continue this conversation.
+            </p>
+            <button
+              onClick={onGoToModels}
+              className="shrink-0 rounded-lg border border-brand-border px-3 py-1.5 text-xs font-medium hover:bg-brand-hover"
+            >
+              Choose a model
+            </button>
+          </div>
+        )}
+
+        {needsRuntimeReload && !modelStarting && (
           <div className="mx-5 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent-warning/30 bg-accent-warning/10 px-4 py-3 text-sm">
             <p className="text-brand-textMuted">
               This conversation uses{" "}
@@ -721,11 +750,7 @@ export function Chat({
             </p>
             <button
               onClick={() => void loadConversationModel()}
-              disabled={
-                runtime.state === "starting" ||
-                startingModel ||
-                conversationModel?.status !== "ok"
-              }
+              disabled={conversationModel?.status !== "ok"}
               className="shrink-0 rounded-lg bg-accent-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-primary/90 disabled:opacity-40"
             >
               Load {conversationModel?.name ?? "model"}
@@ -739,6 +764,15 @@ export function Chat({
               error={engineError}
               onDismiss={runtime.state === "error" ? undefined : () => setError(null)}
             />
+            {retryId && !needsRuntimeReload && (
+              <button
+                onClick={() => void selectModel(retryId)}
+                disabled={modelStarting}
+                className="mt-2 rounded-lg border border-brand-border px-3 py-1.5 text-xs font-medium hover:bg-brand-hover disabled:opacity-40"
+              >
+                Try again
+              </button>
+            )}
           </div>
         )}
 
@@ -817,12 +851,27 @@ export function Chat({
               <p className="max-w-sm text-sm text-brand-textMuted">
                 {engineError?.suggested_action ?? "Restart Omnira."}
               </p>
-              <button
-                onClick={onGoToDiagnostics}
-                className="mt-2 rounded-lg bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-primary/90"
-              >
-                Advanced Diagnostics
-              </button>
+              <div className="mt-2 flex items-center gap-2">
+                {retryId && (
+                  <button
+                    onClick={() => void selectModel(retryId)}
+                    disabled={modelStarting}
+                    className="rounded-lg bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-primary/90 disabled:opacity-40"
+                  >
+                    Try again
+                  </button>
+                )}
+                <button
+                  onClick={onGoToDiagnostics}
+                  className={
+                    retryId
+                      ? "rounded-lg border border-brand-border px-4 py-2 text-sm font-medium hover:bg-brand-hover"
+                      : "rounded-lg bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-primary/90"
+                  }
+                >
+                  Advanced Diagnostics
+                </button>
+              </div>
             </div>
           ) : messages.length === 0 && !viewingStream ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
@@ -890,23 +939,18 @@ export function Chat({
               }}
               aria-label="Message"
               rows={Math.min(6, Math.max(1, draft.split("\n").length))}
-              placeholder={
-                conversationModelUnregistered
-                  ? "This conversation's model is no longer available..."
-                  : conversationModelFileMissing
-                    ? "Restore the model file to continue..."
-                    : needsRuntimeReload
-                      ? "Load this conversation's model to continue..."
-                      : loadedModelUnavailable
-                        ? "The loaded model was removed. Choose another model..."
-                      : runtime.state === "error"
-                        ? (engineError?.message ?? "Omnira's engine is not responding.")
-                        : runtime.state === "ready"
-                          ? "Message your local model..."
-                          : runtime.state === "starting"
-                            ? "Starting model..."
-                            : "Choose a model to start"
-              }
+              placeholder={composerPlaceholder({
+                runtimeState: runtime.state,
+                generating,
+                viewingStream,
+                startingModel,
+                conversationModelUnregistered,
+                conversationModelFileMissing,
+                conversationModelInvalid,
+                needsRuntimeReload,
+                loadedModelUnavailable,
+                engineErrorMessage: engineError?.message ?? null,
+              })}
               disabled={composerLocked}
               className="flex-1 resize-none rounded-xl border border-brand-border bg-brand-card px-4 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-accent-primary/50 focus-visible:ring-1 focus-visible:ring-accent-primary/50 disabled:opacity-60"
             />

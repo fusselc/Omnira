@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   canSubmitDraft,
   composerDisabled,
+  composerPlaceholder,
   isNearBottom,
   isSubmitKey,
   replyAnnouncement,
+  retryModelId,
   type ComposerLockInput,
+  type ComposerPlaceholderInput,
 } from "./chatUi";
 
 const idle: ComposerLockInput = {
@@ -94,6 +97,100 @@ describe("replyAnnouncement", () => {
 
   it("stays silent before any reply", () => {
     expect(replyAnnouncement(false, false, null)).toBe("");
+  });
+});
+
+describe("composerPlaceholder", () => {
+  const ready: ComposerPlaceholderInput = {
+    runtimeState: "ready",
+    generating: false,
+    viewingStream: false,
+    startingModel: false,
+    conversationModelUnregistered: false,
+    conversationModelFileMissing: false,
+    conversationModelInvalid: false,
+    needsRuntimeReload: false,
+    loadedModelUnavailable: false,
+    engineErrorMessage: null,
+  };
+
+  it("invites a message when ready", () => {
+    expect(composerPlaceholder(ready)).toBe("Message your local model...");
+  });
+
+  it("explains an invalid conversation model instead of inviting a message", () => {
+    expect(composerPlaceholder({ ...ready, conversationModelInvalid: true })).toMatch(
+      /model file is invalid/,
+    );
+  });
+
+  it("says the model is starting rather than asking to load it again", () => {
+    expect(
+      composerPlaceholder({ ...ready, runtimeState: "starting", needsRuntimeReload: true }),
+    ).toBe("Starting model...");
+    expect(composerPlaceholder({ ...ready, startingModel: true })).toBe("Starting model...");
+  });
+
+  it("explains a reply in progress here or in another conversation", () => {
+    expect(composerPlaceholder({ ...ready, generating: true, viewingStream: true })).toMatch(
+      /press Stop/,
+    );
+    expect(composerPlaceholder({ ...ready, generating: true })).toMatch(
+      /Another conversation/,
+    );
+  });
+
+  it("uses the engine's normalized message on error", () => {
+    expect(
+      composerPlaceholder({
+        ...ready,
+        runtimeState: "error",
+        engineErrorMessage: "The chat engine could not start.",
+      }),
+    ).toBe("The chat engine could not start.");
+    expect(composerPlaceholder({ ...ready, runtimeState: "error" })).toBe(
+      "Omnira's engine is not responding.",
+    );
+  });
+
+  it("asks for a model when nothing is running", () => {
+    expect(composerPlaceholder({ ...ready, runtimeState: "stopped" })).toBe(
+      "Choose a model to start",
+    );
+  });
+
+  it("never mentions accelerators", () => {
+    const states: ComposerPlaceholderInput["runtimeState"][] = [
+      "ready",
+      "starting",
+      "error",
+      "stopped",
+    ];
+    for (const runtimeState of states) {
+      expect(composerPlaceholder({ ...ready, runtimeState })).not.toMatch(/GPU|CUDA|Vulkan/i);
+    }
+  });
+});
+
+describe("retryModelId", () => {
+  const models = [
+    { id: "a", status: "ok" as const },
+    { id: "b", status: "missing" as const },
+    { id: "c", status: "ok" as const },
+  ];
+
+  it("prefers the conversation's model when it is usable", () => {
+    expect(retryModelId(models, "a", "c")).toBe("a");
+  });
+
+  it("falls back to the last engine model when the conversation has none usable", () => {
+    expect(retryModelId(models, null, "c")).toBe("c");
+    expect(retryModelId(models, "b", "c")).toBe("c");
+  });
+
+  it("returns null when nothing usable is known", () => {
+    expect(retryModelId(models, "b", null)).toBeNull();
+    expect(retryModelId(models, "gone", "also-gone")).toBeNull();
   });
 });
 

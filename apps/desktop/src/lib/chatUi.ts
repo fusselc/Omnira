@@ -2,6 +2,7 @@
  * Pure presentation decisions for the Chat screen, kept out of the component
  * so they can be unit tested without mounting React.
  */
+import type { ModelEntry, RuntimeState } from "./ipc";
 
 export interface ComposerLockInput {
   /** `sendBlocker(...) === null` for the latest runtime snapshot. */
@@ -72,6 +73,75 @@ export function replyAnnouncement(
       return exhaustive;
     }
   }
+}
+
+export interface ComposerPlaceholderInput {
+  runtimeState: RuntimeState;
+  /** Any conversation is generating. */
+  generating: boolean;
+  /** The generating conversation is the one on screen. */
+  viewingStream: boolean;
+  /** A model switch requested from Chat is in flight. */
+  startingModel: boolean;
+  conversationModelUnregistered: boolean;
+  conversationModelFileMissing: boolean;
+  conversationModelInvalid: boolean;
+  needsRuntimeReload: boolean;
+  loadedModelUnavailable: boolean;
+  engineErrorMessage: string | null;
+}
+
+/**
+ * Composer placeholder that says why the box is disabled, or what to do next.
+ * Order matters: in-flight work first, then the conversation's own model, then
+ * the engine.
+ */
+export function composerPlaceholder(s: ComposerPlaceholderInput): string {
+  if (s.generating) {
+    return s.viewingStream
+      ? "Wait for the reply to finish, or press Stop..."
+      : "Another conversation is still replying...";
+  }
+  if (s.startingModel || s.runtimeState === "starting") return "Starting model...";
+  if (s.conversationModelUnregistered) {
+    return "This conversation's model is no longer available...";
+  }
+  if (s.conversationModelFileMissing) return "Restore the model file to continue...";
+  if (s.conversationModelInvalid) {
+    return "This conversation's model file is invalid. Choose another model...";
+  }
+  if (s.needsRuntimeReload) return "Load this conversation's model to continue...";
+  if (s.loadedModelUnavailable) {
+    return "The loaded model is no longer available. Choose another model...";
+  }
+  switch (s.runtimeState) {
+    case "error":
+      return s.engineErrorMessage ?? "Omnira's engine is not responding.";
+    case "ready":
+      return "Message your local model...";
+    case "stopped":
+      return "Choose a model to start";
+    default: {
+      const exhaustive: never = s.runtimeState;
+      return exhaustive;
+    }
+  }
+}
+
+/**
+ * Model to restart after the engine failed: the conversation's own model
+ * first, then the last model the engine reported. The core clears
+ * `model_id` on error, so the caller remembers the last one it saw.
+ */
+export function retryModelId(
+  models: Pick<ModelEntry, "id" | "status">[],
+  conversationModelId: string | null,
+  lastRuntimeModelId: string | null,
+): string | null {
+  for (const id of [conversationModelId, lastRuntimeModelId]) {
+    if (id && models.some((m) => m.id === id && m.status === "ok")) return id;
+  }
+  return null;
 }
 
 /** Whether the Send button may submit `draft`. */
