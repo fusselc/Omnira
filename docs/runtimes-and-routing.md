@@ -4,8 +4,10 @@ This document describes Omnira's long-term multi-runtime strategy. **None of
 this expands shipped MVP/alpha scope by itself.** The shipped product is
 pillar 1 only (llama.cpp/GGUF chat via managed llama-server, Vulkan + CPU).
 Phase 6 (next approved) adds a CUDA llama-server variant for that same
-ChatProvider. This document exists so post-MVP phases extend the architecture
-instead of redesigning it.
+ChatProvider. Phase 7 image generation is next approved for design and a
+headless spike in parallel (see the sequencing rule in
+[roadmap.md](roadmap.md)). This document exists so post-MVP phases extend the
+architecture instead of redesigning it.
 
 For phase **status** (Shipped / Next approved / Deferred / Later / …), use
 [capability-map.md](capability-map.md) as a navigation index and
@@ -66,7 +68,10 @@ MVP implements **ChatProvider only** (`LlamaServerChatProvider`; see
 `docs/chat-provider.md`). Post-MVP adds narrow provider interfaces per feature,
 documented now and implemented only when their phase begins:
 
-- `ImageProvider` -- local image generation (Phase 7; deferred until done criteria)
+- `ImageProvider` -- local image generation (Phase 7; next approved for design
+  + headless spike; contract in [image-provider.md](image-provider.md), runtime
+  in [ADR 0002](adr/0002-image-provider-worker.md); Create hidden until the
+  done criteria pass)
 - `VideoProvider` -- local video generation (Phase 9)
 - `SpeechToTextProvider` / `TextToSpeechProvider` -- voice (Phase 11)
 - `VisionProvider` -- computer-vision style tasks (with Phase 8 ONNX path);
@@ -105,7 +110,8 @@ flowchart TD
 
 See `docs/roadmap.md` for the full table and `docs/capability-map.md` for
 status. Summary: CUDA LLM for ChatProvider (6, next approved) -> image (7,
-deferred) -> Windows ML/ONNX (8) -> video (9) -> agents/RAG/document chat (10)
+next approved for design + headless spike, in parallel with 6) -> Windows
+ML/ONNX (8) -> video (9) -> agents/RAG/document chat (10)
 -> voice (11) -> plugin ecosystem (12). CUDA for LLMs is deliberately first: it
 is the single biggest expected performance gap for NVIDIA users on the MVP's
 Vulkan path.
@@ -120,10 +126,16 @@ Vulkan path.
 - **Windows ML / ONNX (Phase 8):** an `OnnxProvider` hosting ONNX models via
   Windows ML, gaining NPU acceleration on Copilot+ hardware. Worker process
   supervision reuses the `process/` seam.
-- **CUDA/TensorRT diffusion and video (Phases 7/9):** managed worker processes
-  (potentially ComfyUI or a purpose-built worker) behind `ImageProvider` /
-  `VideoProvider`. ComfyUI and similar workflow engines integrate as **managed
-  workers**, never as the default beginner UX.
+- **Image generation (Phase 7):** a managed stable-diffusion.cpp worker
+  (`sd-cli`, one supervised process per job, no listening socket) behind
+  `ImageProvider`, with Vulkan and CPU variants and CUDA following the Phase 6
+  distribution decision. Decided in
+  [ADR 0002](adr/0002-image-provider-worker.md), which also rejects ONNX /
+  Windows ML (revisit in Phase 8) and ComfyUI as the Phase 7 engine.
+- **Video (Phase 9):** managed worker processes behind `VideoProvider`; engine
+  to be decided when that phase begins. ComfyUI and similar workflow engines
+  may only integrate as **managed workers**, never as the default beginner UX,
+  and only via an ADR that amends ADR 0001.
 
 ## 7. Guardrails
 
