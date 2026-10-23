@@ -11,6 +11,7 @@ import {
 } from "../lib/ipc";
 import { startStream, truncateToBudget, type StreamHandle } from "../lib/chat";
 import { sendBlocker } from "../lib/chatGuards";
+import { canSubmitDraft, composerDisabled } from "../lib/chatUi";
 import { acquire, release } from "../lib/singleFlight";
 import { Markdown } from "../lib/markdown";
 import { StatusPill } from "../components/StatusPill";
@@ -53,6 +54,8 @@ export function Chat({
   const activeIdRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const startLockRef = useRef(false);
+  const sendLockRef = useRef(false);
+  const [sending, setSending] = useState(false);
   const [lengthLimitedIds, setLengthLimitedIds] = useState<string[]>([]);
 
   // Renaming & Fallback states
@@ -91,6 +94,8 @@ export function Chat({
     runtimeModel?.status !== "ok";
   const canSend =
     sendBlocker({ runtime, models, conversationModelId, generating }) === null;
+  const composerLock = { canSend, generating, sending, startingModel };
+  const composerLocked = composerDisabled(composerLock);
   /** Prefer the core's last_error while the engine is in error; otherwise the local stream/IPC error. */
   const engineError =
     runtime.state === "error" ? (runtime.last_error ?? error) : error;
@@ -198,6 +203,7 @@ export function Chat({
   }, [runtime.model_id]);
 
   const selectModel = async (modelId: string) => {
+    if (sendLockRef.current) return;
     if (!acquire(startLockRef)) return;
     setError(null);
     setStartingModel(true);
@@ -295,7 +301,9 @@ export function Chat({
 
   const send = async () => {
     const content = draft.trim();
-    if (!content || generating || !canSend) return;
+    if (!content || composerLocked || startLockRef.current) return;
+    if (!acquire(sendLockRef)) return;
+    setSending(true);
     setError(null);
     setDraft("");
 
@@ -399,6 +407,9 @@ export function Chat({
       setGeneratingId(null);
       // The engine may have gone away; show its real state right now.
       void refreshRuntime();
+    } finally {
+      release(sendLockRef);
+      if (mountedRef.current) setSending(false);
     }
   };
 
@@ -565,7 +576,7 @@ export function Chat({
             <select
               value={dropdownModelId ?? ""}
               onChange={(e) => e.target.value && void selectModel(e.target.value)}
-              disabled={runtime.state === "starting" || generating || startingModel}
+              disabled={runtime.state === "starting" || generating || sending || startingModel}
               aria-label="Model"
               className="max-w-56 rounded-lg border border-brand-border bg-brand-card px-3 py-1.5 text-xs text-zinc-100 outline-none focus:border-accent-primary/50 focus-visible:ring-1 focus-visible:ring-accent-primary/50"
             >
@@ -850,7 +861,7 @@ export function Chat({
                             ? "Starting model..."
                             : "Choose a model to start"
               }
-              disabled={!canSend || generating}
+              disabled={composerLocked}
               className="flex-1 resize-none rounded-xl border border-brand-border bg-brand-card px-4 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-accent-primary/50 focus-visible:ring-1 focus-visible:ring-accent-primary/50 disabled:opacity-60"
             />
             {generating ? (
@@ -866,7 +877,7 @@ export function Chat({
             ) : (
               <button
                 onClick={() => void send()}
-                disabled={!canSend || !draft.trim()}
+                disabled={!canSubmitDraft(composerLock, draft)}
                 className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent-primary text-white hover:bg-accent-primary/90 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-primary/50"
                 title="Send message"
                 aria-label="Send message"
