@@ -6,7 +6,9 @@ API in MVP. Long-term capability interfaces (`EmbeddingProvider`,
 `ImageProvider`, `SpeechToTextProvider`, `TextToSpeechProvider`,
 `VisionProvider`, `OnnxProvider`, `RagProvider`, `ToolAgentProvider`,
 `WorkflowProvider`, `VideoProvider`, `MusicAudioProvider`,
-`WebSearchProvider`) are documented in `docs/runtimes-and-routing.md` only.
+`WebSearchProvider`) are documented in `docs/runtimes-and-routing.md` only,
+except `ImageProvider`, which has its own Phase 7 contract in
+`docs/image-provider.md` (not shipped; does not change this contract).
 Status and phase ordering live in `docs/roadmap.md` and the navigation index
 `docs/capability-map.md` (canonical docs win on conflict).
 

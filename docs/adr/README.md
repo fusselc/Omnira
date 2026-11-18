@@ -7,6 +7,7 @@ itself and link here for historical context.
 | ADR | Title | Status |
 |-----|-------|--------|
 | [0001](0001-rust-tauri-core-orchestrator.md) | Rust/Tauri core orchestrator instead of Python/FastAPI sidecar | Accepted |
+| [0002](0002-image-provider-worker.md) | stable-diffusion.cpp as the Phase 7 image worker | Accepted (design) |
 
 When adding an ADR, use the next sequential number, keep ASCII-safe punctuation,
 and update this index in the same change.

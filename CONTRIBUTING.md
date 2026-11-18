@@ -9,11 +9,13 @@ Contributions are evaluated against these principles, in this order:
 
 1. **Scope discipline.** Shipped scope is local GGUF chat on Windows (Vulkan/CPU
    managed `llama-server`). **Next approved engineering** is Phase 6 CUDA
-   acceleration for the existing ChatProvider only -- see `AGENTS.md`,
-   `docs/roadmap.md`, and `docs/capability-map.md`. Phase 7 and later (image,
-   Create, voice, RAG, agents, downloads, plugins, ONNX/NPU, and other
-   deferred or later work) stay documented but are not accepted as code until
-   their phase begins. PRs that expand active scope will be declined, even if
+   acceleration for the existing ChatProvider only, plus, in parallel, Phase 7
+   image generation design and headless backend work following
+   `docs/phase7-implementation-plan.md` (Create stays hidden until the Phase 7
+   done criteria in `docs/roadmap.md` pass) -- see `AGENTS.md`,
+   `docs/roadmap.md`, and `docs/capability-map.md`. Phase 8 and later (voice,
+   RAG, agents, downloads, plugins, ONNX/NPU, and other later work) stay
+   documented but are not accepted as code until their phase begins. PRs that expand active scope will be declined, even if
    well written.
 2. **Local-first, private by default.** No telemetry, accounts, cloud sync,
    crash upload, update checks, or external network calls by default. Any PR that

@@ -13,6 +13,9 @@ process, or the roadmap, those documents win:
 | Phase order and milestones | [roadmap.md](roadmap.md) |
 | Runtime pillars and providers | [runtimes-and-routing.md](runtimes-and-routing.md) |
 | Chat contract (MVP) | [chat-provider.md](chat-provider.md) |
+| Image contract (Phase 7, not shipped) | [image-provider.md](image-provider.md) |
+| Phase 7 runtime decision | [adr/0002-image-provider-worker.md](adr/0002-image-provider-worker.md) |
+| Phase 7 ordered work | [phase7-implementation-plan.md](phase7-implementation-plan.md) |
 | Privacy and network defaults | [privacy.md](privacy.md) |
 | Security / process boundaries | [local-security-boundary.md](local-security-boundary.md) |
 | Orchestrator decision | [adr/0001-rust-tauri-core-orchestrator.md](adr/0001-rust-tauri-core-orchestrator.md) |
@@ -27,6 +30,7 @@ Use these exact categories:
 |---|---|
 | **Shipped** | On `main` and part of the current alpha product. |
 | **Next approved** | Approved for implementation next; not shipped yet. |
+| **Next approved (design + headless spike)** | Scoped approval: design, headless spike, Rust-core backend, and a dev-build-only hidden route. No user-visible feature until the phase's done criteria pass. |
 | **Deferred** | Planned, but blocked until prior work and done-criteria are met. |
 | **Later** | On the roadmap after the next approved / deferred work. |
 | **Unscheduled** | Intended direction without a fixed phase number. |
@@ -39,11 +43,16 @@ Use these exact categories:
   references); local persistence; settings; Advanced Diagnostics; Vulkan/CPU
   managed `llama-server`; packaged alpha (`v0.1.0-alpha`).
 - **Next approved engineering:** Phase 6 CUDA acceleration for the **existing
-  ChatProvider only** (same Chat UI; accelerator detail in Diagnostics).
-- **Deferred:** Phase 7 `ImageProvider` / Create. Create must **not** become an
-  active visible screen until end-to-end criteria are met: generate, see,
-  delete, and relaunch to view a local image without a terminal; worker under
-  Job Object supervision; no orphaned worker after force-close.
+  ChatProvider only** (same Chat UI; accelerator detail in Diagnostics) and,
+  **in parallel**, Phase 7 `ImageProvider` design, headless spike, and
+  Rust-core backend work per
+  [phase7-implementation-plan.md](phase7-implementation-plan.md) and the
+  sequencing rule in [roadmap.md](roadmap.md).
+- **Do not expose Create UI.** Create must **not** become an active visible
+  screen in any release build until every
+  [Phase 7 done criterion](roadmap.md#phase-7-done-criteria) passes. Until then
+  only a dev-build-only hidden route (no navigation entry, excluded from release
+  bundles) is allowed.
 - **Not current features:** image generation, video, voice, music, RAG,
   document chat, multimodal chat / file understanding, agents, workflows,
   plugins, web search, cloud providers, or model downloading.
@@ -78,7 +87,7 @@ now. When those features are designed:
 | Local persistence, settings, diagnostics | Shipped | MVP | Rust core | Prompt-free logs; redacted export |
 | Packaged Windows alpha (NSIS, offline-capable) | Shipped | Phase 5 / `v0.1.0-alpha` | Bundled Vulkan+CPU runtimes | WebView2 prerequisite; unsigned internal alpha |
 | CUDA acceleration for existing ChatProvider | Next approved | Phase 6 | Same `ChatProvider`; CUDA llama-server variant | Same Chat UI; Diagnostics names accelerator; not TensorRT diffusion |
-| Image generation (Create) | Deferred | Phase 7 | `ImageProvider`; CUDA/TensorRT or managed diffusion worker | No active Create screen until end-to-end criteria above are met |
+| Image generation (Create) | Next approved (design + headless spike) | Phase 7, parallel with Phase 6 | `ImageProvider` / `SdCliImageProvider`; managed stable-diffusion.cpp worker ([ADR 0002](adr/0002-image-provider-worker.md)) | Contract: [image-provider.md](image-provider.md). Not a current feature. No visible Create screen until the roadmap's Phase 7 done criteria pass; dev-only hidden route allowed |
 | Windows ML / ONNX / NPU tasks | Later | Phase 8 | `OnnxProvider`; Create vision/audio tasks | Computer-vision / ONNX tasks — not multimodal chat |
 | Video generation | Later | Phase 9 | `VideoProvider`; CUDA/TensorRT | After image path is stable |
 | Memory, embeddings, RAG, document chat | Later | Phase 10 | `EmbeddingProvider`, `RagProvider` | Distinct from multimodal file-understanding UX |
@@ -89,7 +98,7 @@ now. When those features are designed:
 | Music / audio generation | Unscheduled | — | `MusicAudioProvider` | Direction only; no phase row |
 | Model download / import assistance | Unscheduled | — | Network-capable assistance | Off by default; explicit permission; never silent downloads |
 | Hardware detection UI | Unscheduled | — | Diagnostics / settings UX | Hardware-aware routing grows per phase; dedicated UI unscheduled |
-| ComfyUI as managed worker | Unscheduled | — | Under image / workflow workers | Never the beginner-default UX |
+| ComfyUI as managed worker | Unscheduled | — | Under image / workflow workers | Never the beginner-default UX. Rejected as the Phase 7 engine by ADR 0002 (Python runtime); needs its own ADR amending ADR 0001 |
 | Optional web search / other network providers | Requires design decision | — | `WebSearchProvider` et al. | Off by default; permission model designed before ship |
 | Cloud providers, accounts, sync, telemetry | Requires explicit product decision | — | — | Not planned as default product behavior. Omnira must retain no accounts, no telemetry, no cloud sync, and no required external network calls by default. Any optional cloud capability would require an explicit future product decision, privacy design, and user permission model |
 | Agent / tool approval and safety UX | Requires design decision | Before any agent/tool ship (ties to Phase 10) | UX and policy | Guardrail above; does not authorize agents now |
@@ -111,4 +120,6 @@ understanding.
 - [runtimes-and-routing.md](runtimes-and-routing.md) — pillars and provider list
 - [privacy.md](privacy.md) — local-first promise
 - [chat-provider.md](chat-provider.md) — shipped Chat contract only
+- [image-provider.md](image-provider.md) — Phase 7 image contract (not shipped)
+- [phase7-implementation-plan.md](phase7-implementation-plan.md) — Phase 7 ordered PRs
 - [vision.md](vision.md) — product vision vs shipped scope

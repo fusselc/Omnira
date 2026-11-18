@@ -15,6 +15,11 @@ Everything lives under `%LOCALAPPDATA%\Omnira\`:
 | `logs\` | Local, prompt-free logs | Rotated text files |
 | `diagnostics\` | Optional export reports | JSON |
 
+**Planned (Phase 7, not shipped):** generated images under `images\`, a
+per-job `images\.staging\` directory, and `image_models` / `images` tables in
+`data\omnira.db`. Image model files are referenced in place like GGUF files.
+See [image-provider.md](image-provider.md) sections 6-8.
+
 `%LOCALAPPDATA%` (not `%APPDATA%`) is deliberate: a local-first app with a
 SQLite database should not ride along with roaming profile sync.
 

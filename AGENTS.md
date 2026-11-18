@@ -25,8 +25,19 @@ The capability map is an index only. If it conflicts with ADRs, provider
 contracts, privacy rules, packaging docs, or the roadmap, those documents win.
 
 **Next approved engineering:** Phase 6 CUDA acceleration for the existing
-ChatProvider only. Do not implement or expose Phase 7+ UI until that phase's
-done criteria are met.
+ChatProvider only, and, in parallel, Phase 7 image generation **design +
+headless spike** (status: Next approved (design + headless spike)). Phase 7
+work follows the ordered steps in
+[docs/phase7-implementation-plan.md](docs/phase7-implementation-plan.md), the
+runtime decision in
+[docs/adr/0002-image-provider-worker.md](docs/adr/0002-image-provider-worker.md),
+the contract in [docs/image-provider.md](docs/image-provider.md), and the
+sequencing rule in [docs/roadmap.md](docs/roadmap.md).
+
+**Do not expose Create UI** in any release build until every Phase 7 done
+criterion in [docs/roadmap.md](docs/roadmap.md) passes. Until then the only
+allowed Create UI is a dev-build-only hidden route (no navigation entry,
+excluded from release bundles). Do not implement or expose Phase 8+ work.
 
 **Do not** claim or ship as current features: image generation, Create screen,
 multimodal chat / file understanding, document chat, RAG, agents, voice, video,
@@ -43,13 +54,17 @@ multimodal understanding. That capability requires an explicit design decision
 - Runtime data belongs under `%LOCALAPPDATA%\Omnira\`.
 - Models are referenced in place by default.
 - `llama-server` must be loopback-only and protected by a per-session API key.
+- Do not commit stable-diffusion.cpp binaries or image model files.
+- The Phase 7 image worker runs per job with no listening socket; any future
+  server mode must be loopback-only with a per-session API key (ADR 0002 D3).
 - No silent downloads of runtimes or models.
 
 ## UI And Product Rules
 
 - Active screens on `main`: Chat, Models, Settings, and Advanced Diagnostics only.
 - Keep deferred and later features out of the active UI until their phase is
-  complete by its documented criteria (Phase 7 Create is deferred).
+  complete by its documented criteria (Phase 7 Create stays hidden until the
+  Phase 7 done criteria pass).
 - Main UI copy should say "Running locally", not "GPU accelerated".
 - Advanced Diagnostics may name runtime variants such as Vulkan or CPU today;
   CUDA only after Phase 6 lands on `main`.
